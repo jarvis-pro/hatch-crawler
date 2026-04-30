@@ -47,7 +47,7 @@ src/
 > 没装 pnpm 的话：`npm i -g pnpm` 或参考 [pnpm.io/installation](https://pnpm.io/installation)。
 
 ```bash
-# 1. 安装
+# 1. 安装（同时会通过 prepare 脚本自动初始化 husky）
 pnpm install
 
 # 2. 配置（可直接用默认值）
@@ -56,12 +56,39 @@ cp .env.example .env
 # 3. 运行（一次性）
 pnpm crawl
 
-# 4. 类型检查
-pnpm typecheck
+# 4. 一键体检：typecheck + lint + format
+pnpm check
 
 # 5. 编译产物
 pnpm build
 ```
+
+## 工程化基建
+
+| 工具            | 配置文件                              | 说明                                          |
+| --------------- | ------------------------------------- | --------------------------------------------- |
+| Prettier        | `.prettierrc.json`, `.prettierignore` | 统一格式                                      |
+| ESLint 9 (flat) | `eslint.config.js`                    | TS 静态检查，已关闭与 Prettier 冲突的规则     |
+| EditorConfig    | `.editorconfig`                       | 跨编辑器风格一致                              |
+| Husky           | `.husky/`                             | git 钩子托管                                  |
+| lint-staged     | `package.json` `lint-staged` 字段     | 提交前只对暂存文件跑 lint + format            |
+| commitlint      | `commitlint.config.js`                | 校验 Conventional Commits（支持中文 subject） |
+
+常用命令：
+
+```bash
+pnpm lint           # 全量 lint
+pnpm lint:fix       # 自动修复
+pnpm format         # 全量格式化
+pnpm format:check   # 仅检查
+pnpm typecheck      # tsc --noEmit
+pnpm check          # 三连：typecheck + lint + format:check
+```
+
+提交时会自动触发：
+
+1. `pre-commit`: 对暂存的 `.ts/.js/.json/.md` 跑 `eslint --fix` + `prettier --write`
+2. `commit-msg`: 校验提交信息是否符合 `<type>: <描述>`，type 取自 `feat / fix / refactor / perf / style / test / docs / build / ci / chore / revert`
 
 > 注：`better-sqlite3` 是原生模块，pnpm 10 默认不跑 postinstall 脚本。
 > 已经在 `package.json` 的 `pnpm.onlyBuiltDependencies` 里把它白名单出来，
@@ -69,19 +96,20 @@ pnpm build
 > 跑一次 `pnpm approve-builds` 即可。
 
 爬取结果默认写入：
+
 - `data/crawler.sqlite` —— 结构化表（`items`、`visited`）
-- `data/items.jsonl`   —— 追加式 JSON Lines
+- `data/items.jsonl` —— 追加式 JSON Lines
 
 ## 写一个新的 Spider
 
 ```ts
-import { BaseSpider, type SpiderContext } from '../core/spider.js';
-import { extractNextData } from '../parsers/next-data-parser.js';
+import { BaseSpider, type SpiderContext } from "../core/spider.js";
+import { extractNextData } from "../parsers/next-data-parser.js";
 
 export class MySpider extends BaseSpider {
-  override readonly name = 'my-site';
+  override readonly name = "my-site";
   override readonly maxDepth = 3;
-  override readonly startUrls = [{ url: 'https://example.com', type: 'index' }];
+  override readonly startUrls = [{ url: "https://example.com", type: "index" }];
 
   override async parse(ctx: SpiderContext): Promise<void> {
     const data = extractNextData(ctx.response.body);
@@ -93,7 +121,7 @@ export class MySpider extends BaseSpider {
     });
 
     // 派发更多 URL
-    ctx.enqueue({ url: 'https://example.com/other', type: 'detail' });
+    ctx.enqueue({ url: "https://example.com/other", type: "detail" });
   }
 }
 ```
