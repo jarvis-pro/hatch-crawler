@@ -2,6 +2,11 @@
 node_modules/
 dist/
 
+# Next.js 构建输出
+.next/
+out/
+next-env.d.ts
+
 # 爬取数据（不入版本控制）
 data/
 

@@ -18,6 +18,9 @@ export default tseslint.config(
       "src/**",
       // apps/cli 在方案 B 中废弃，下次提交 git rm；过渡期不 lint
       "apps/cli/**",
+      // Next.js 自动生成的文件（含 triple-slash reference，不要 lint）
+      "**/.next/**",
+      "**/next-env.d.ts",
     ],
   },
 
