@@ -1,0 +1,43 @@
+{
+  "name": "hatch-crawler",
+  "version": "0.1.0",
+  "description": "A comprehensive Node.js/TypeScript crawler optimized for Next.js sites",
+  "type": "module",
+  "main": "dist/index.js",
+  "packageManager": "pnpm@10.33.2",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "crawl": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "cheerio": "^1.0.0",
+    "dotenv": "^16.4.5",
+    "got": "^14.4.2",
+    "hpagent": "^1.2.0",
+    "node-cron": "^3.0.3",
+    "p-queue": "^8.0.1",
+    "pino": "^9.4.0",
+    "pino-pretty": "^11.2.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.7.4",
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2"
+  },
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=9"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3"
+    ]
+  }
+}

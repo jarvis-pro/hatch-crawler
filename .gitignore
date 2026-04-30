@@ -1,0 +1,21 @@
+# 依赖与构建产物
+node_modules/
+dist/
+
+# 爬取数据（不入版本控制）
+data/
+
+# 本地环境变量
+.env
+
+# 通用
+*.log
+.DS_Store
+
+# SQLite
+*.sqlite
+*.sqlite-journal
+
+# pnpm
+.pnpm-store/
+.pnpm-debug.log
