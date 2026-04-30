@@ -49,32 +49,50 @@ hatch-crawler/
 > 本项目使用 **pnpm** 管理依赖（`packageManager` 字段已锁定版本）。
 > 没装 pnpm 的话：`npm i -g pnpm` 或参考 [pnpm.io/installation](https://pnpm.io/installation)。
 
+### 一键起完整看板（推荐，Docker Compose）
+
 ```bash
-# 1. 安装（同时通过 prepare 脚本自动初始化 husky）
-pnpm install
-
-# 2. 引擎烟雾测试（不依赖 Postgres，用内存 Storage 跑示例 Spider）
-pnpm smoke
-
-# 3. 一键体检：typecheck + lint + format
-pnpm check
+cp .env.docker.example .env
+docker compose up --build
+# 等到 hatch-web 日志出现 "[instrumentation] migrations done"
+open http://localhost:3000
 ```
 
-> Phase 3 完成后，`pnpm dev` 会启动 Next.js 看板（同时拉起内置 worker），
-> 在浏览器里完成所有交互。在那之前 `pnpm dev` 会提示去用 `pnpm smoke`。
+### 仅本地 dev（看板）
+
+```bash
+# 1. 安装依赖（同时初始化 husky）
+pnpm install
+
+# 2. 起 Postgres
+docker compose up postgres -d
+
+# 3. 启动 Next.js 看板（含内置 worker、自动迁移）
+DATABASE_URL=postgres://hatch:hatch@localhost:5432/hatch pnpm dev
+```
+
+### 不要看板，只调引擎
+
+```bash
+pnpm smoke    # 内存 Storage 跑一遍示例 Spider
+pnpm check    # typecheck + lint + format
+```
 
 ## 命令一览
 
-| 命令                                | 作用                                           |
-| ----------------------------------- | ---------------------------------------------- |
-| `pnpm dev`                          | 启动开发环境（Phase 3 后 = 启动 Next.js 看板） |
-| `pnpm smoke`                        | 引擎烟雾测试（内存 Storage，不依赖 DB）        |
-| `pnpm build`                        | 编译所有 workspace 包                          |
-| `pnpm typecheck`                    | 全量类型检查                                   |
-| `pnpm lint` / `pnpm lint:fix`       | ESLint                                         |
-| `pnpm format` / `pnpm format:check` | Prettier                                       |
-| `pnpm check`                        | 三连：typecheck + lint + format:check          |
-| `pnpm clean`                        | 清空所有 dist/                                 |
+| 命令                                | 作用                                     |
+| ----------------------------------- | ---------------------------------------- |
+| `pnpm dev`                          | 启动 Next.js 看板（开发模式，HMR）       |
+| `pnpm start`                        | 启动 Next.js 生产模式（先 `pnpm build`） |
+| `pnpm build`                        | 编译所有 workspace 包                    |
+| `pnpm db:migrate`                   | 手动跑迁移（web 启动时也会自动跑）       |
+| `pnpm db:seed`                      | 灌入示例 Spider + 默认 settings          |
+| `pnpm smoke`                        | 引擎烟雾测试（内存 Storage，不依赖 DB）  |
+| `pnpm typecheck`                    | 全量类型检查                             |
+| `pnpm lint` / `pnpm lint:fix`       | ESLint                                   |
+| `pnpm format` / `pnpm format:check` | Prettier                                 |
+| `pnpm check`                        | 三连：typecheck + lint + format:check    |
+| `pnpm clean`                        | 清空所有 dist/                           |
 
 针对单个子包：
 
