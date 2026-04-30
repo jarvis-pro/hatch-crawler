@@ -1,0 +1,21 @@
+# 不复制到镜像构建上下文，避免 build 慢和泄漏
+node_modules
+**/node_modules
+.next
+**/.next
+dist
+**/dist
+data
+**/*.log
+.env
+.env.local
+.env.*.local
+.git
+.github
+.husky
+.vscode
+.idea
+docs
+*.md
+!apps/web/README.md
+commit.sh
