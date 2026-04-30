@@ -1,8 +1,4 @@
-import got, {
-  type Got,
-  type OptionsOfTextResponseBody,
-  RequestError,
-} from "got";
+import got, { type Got, type OptionsOfTextResponseBody } from "got";
 import { setTimeout as sleep } from "node:timers/promises";
 import { config } from "../config/index.js";
 import { logger } from "../utils/logger.js";

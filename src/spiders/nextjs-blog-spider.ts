@@ -1,7 +1,7 @@
 import { BaseSpider, type SpiderContext } from "../core/spider.js";
 import { extractNextData } from "../parsers/next-data-parser.js";
 import { extractLinks, extractMeta, loadHtml } from "../parsers/html-parser.js";
-import { resolveUrl, getHost } from "../utils/url.js";
+import { getHost } from "../utils/url.js";
 import { logger } from "../utils/logger.js";
 
 /**
