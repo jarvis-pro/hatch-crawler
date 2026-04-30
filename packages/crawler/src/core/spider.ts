@@ -1,11 +1,11 @@
 import PQueue from "p-queue";
 import type { CrawlerEvent, RunStats } from "@hatch-crawler/shared";
-import { Fetcher, type FetchResult } from "./fetcher.js";
-import { UrlQueue, type QueueItem } from "./queue.js";
-import type { CrawlItem, Storage } from "../storage/storage.js";
-import { getCrawlerConfig } from "../config/index.js";
-import { logger } from "../utils/logger.js";
-import { urlFingerprint } from "../utils/url.js";
+import { Fetcher, type FetchResult } from "./fetcher";
+import { UrlQueue, type QueueItem } from "./queue";
+import type { CrawlItem, Storage } from "../storage/storage";
+import { getCrawlerConfig } from "../config/index";
+import { logger } from "../utils/logger";
+import { urlFingerprint } from "../utils/url";
 
 export interface SpiderContext {
   url: string;

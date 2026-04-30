@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
-import type { Db } from "../client.js";
-import { spiders, type NewSpider, type Spider } from "../schema.js";
+import type { Db } from "../client";
+import { spiders, type NewSpider, type Spider } from "../schema";
 
 export function listAll(db: Db): Promise<Spider[]> {
   return db.select().from(spiders).orderBy(spiders.name);

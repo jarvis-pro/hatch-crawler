@@ -1,11 +1,11 @@
 import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
-import type { Db } from "../client.js";
+import type { Db } from "../client";
 import {
   runs,
   type NewRun,
   type Run,
   type RunStatus,
-} from "../schema.js";
+} from "../schema";
 
 export interface CreateRunInput {
   spiderName: string;

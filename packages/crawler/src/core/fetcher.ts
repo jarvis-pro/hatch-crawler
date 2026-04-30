@@ -1,11 +1,11 @@
 import got, { type Got, type OptionsOfTextResponseBody } from "got";
 import { setTimeout as sleep } from "node:timers/promises";
-import { config } from "../config/index.js";
-import { logger } from "../utils/logger.js";
-import { getHost } from "../utils/url.js";
-import { UAPool } from "../middleware/ua-pool.js";
-import { ProxyPool } from "../middleware/proxy-pool.js";
-import { HostRateLimiter } from "../middleware/rate-limiter.js";
+import { config } from "../config/index";
+import { logger } from "../utils/logger";
+import { getHost } from "../utils/url";
+import { UAPool } from "../middleware/ua-pool";
+import { ProxyPool } from "../middleware/proxy-pool";
+import { HostRateLimiter } from "../middleware/rate-limiter";
 
 export interface FetchResult {
   url: string;

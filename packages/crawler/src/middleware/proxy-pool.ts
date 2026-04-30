@@ -1,5 +1,5 @@
 import { HttpsProxyAgent } from "hpagent";
-import { logger } from "../utils/logger.js";
+import { logger } from "../utils/logger";
 
 interface ProxyEntry {
   url: string;

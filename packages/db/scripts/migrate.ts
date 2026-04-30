@@ -9,7 +9,7 @@
  *   DATABASE_URL=postgres://... pnpm --filter @hatch-crawler/db db:migrate
  */
 
-import { runMigrations } from "../src/migrate.js";
+import { runMigrations } from "../src/migrate";
 
 const url = process.env.DATABASE_URL;
 if (!url) {

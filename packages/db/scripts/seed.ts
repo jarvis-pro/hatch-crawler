@@ -11,8 +11,8 @@
  * 已存在则不覆盖（onConflictDoNothing）。
  */
 
-import { closeDb, getDb } from "../src/client.js";
-import { settings, spiders } from "../src/schema.js";
+import { closeDb, getDb } from "../src/client";
+import { settings, spiders } from "../src/schema";
 
 const url = process.env.DATABASE_URL;
 if (!url) {

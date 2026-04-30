@@ -9,13 +9,13 @@
  *   pnpm --filter @hatch-crawler/crawler smoke
  */
 
-import { runSpider, setCrawlerConfig } from "../src/index.js";
-import { NextJsBlogSpider } from "../src/spiders/nextjs-blog-spider.js";
+import { runSpider, setCrawlerConfig } from "../src/index";
+import { NextJsBlogSpider } from "../src/spiders/nextjs-blog-spider";
 import type {
   CrawlItem,
   SaveItemResult,
   Storage,
-} from "../src/storage/storage.js";
+} from "../src/storage/storage";
 
 class InMemoryStorage implements Storage {
   private items: CrawlItem[] = [];

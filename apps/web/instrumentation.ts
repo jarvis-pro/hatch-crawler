@@ -11,7 +11,7 @@ export async function register(): Promise<void> {
 
   // 动态 import：避免在 edge / build 时把这些 server-only 包拉进来
   const { runMigrations } = await import("@hatch-crawler/db");
-  const { startWorker } = await import("./lib/worker/index.js");
+  const { startWorker } = await import("./lib/worker");
 
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {

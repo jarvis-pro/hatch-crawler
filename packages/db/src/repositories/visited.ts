@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
-import type { Db } from "../client.js";
-import { visited } from "../schema.js";
+import type { Db } from "../client";
+import { visited } from "../schema";
 
 export async function isVisited(
   db: Db,

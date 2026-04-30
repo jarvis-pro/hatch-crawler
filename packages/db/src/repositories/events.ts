@@ -1,6 +1,6 @@
 import { and, asc, eq, sql } from "drizzle-orm";
-import type { Db } from "../client.js";
-import { events, type Event, type EventLevel } from "../schema.js";
+import type { Db } from "../client";
+import { events, type Event, type EventLevel } from "../schema";
 
 export interface AppendEventInput {
   runId: string;

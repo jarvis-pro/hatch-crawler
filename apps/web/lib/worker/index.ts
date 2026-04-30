@@ -1,9 +1,9 @@
 import "server-only";
 import { getBoss, getDb, QUEUE_CRAWL, runRepo } from "@hatch-crawler/db";
 import type { CrawlJobData } from "@hatch-crawler/db";
-import { env } from "../env.js";
-import { handleCrawlJob } from "./job-handler.js";
-import { subscribe } from "./event-bus.js";
+import { env } from "../env";
+import { handleCrawlJob } from "./job-handler";
+import { subscribe } from "./event-bus";
 
 /**
  * Worker 启动入口（被 instrumentation.ts 调用）。

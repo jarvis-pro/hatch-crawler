@@ -2,8 +2,8 @@ import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { createHash } from "node:crypto";
-import { logger } from "../utils/logger.js";
-import type { CrawlItem, SaveItemResult, Storage } from "./storage.js";
+import { logger } from "../utils/logger";
+import type { CrawlItem, SaveItemResult, Storage } from "./storage";
 
 /**
  * SQLite 实现。同步 API 包成 async 以满足 Storage 接口。

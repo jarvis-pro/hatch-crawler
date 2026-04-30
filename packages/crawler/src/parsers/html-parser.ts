@@ -1,5 +1,5 @@
 import * as cheerio from "cheerio";
-import { resolveUrl } from "../utils/url.js";
+import { resolveUrl } from "../utils/url";
 
 export type Cheerio = cheerio.CheerioAPI;
 

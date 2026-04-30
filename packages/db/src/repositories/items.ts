@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, desc, eq, sql } from "drizzle-orm";
-import type { Db } from "../client.js";
-import { items, type Item } from "../schema.js";
+import type { Db } from "../client";
+import { items, type Item } from "../schema";
 
 function sha1(s: string): string {
   return createHash("sha1").update(s).digest("hex");

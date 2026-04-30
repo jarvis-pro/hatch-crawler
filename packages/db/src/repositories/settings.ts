@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
-import type { Db } from "../client.js";
-import { settings, type Setting } from "../schema.js";
+import type { Db } from "../client";
+import { settings, type Setting } from "../schema";
 
 export async function get<T = unknown>(
   db: Db,

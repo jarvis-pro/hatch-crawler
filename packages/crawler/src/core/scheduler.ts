@@ -1,5 +1,5 @@
 import cron from "node-cron";
-import { logger } from "../utils/logger.js";
+import { logger } from "../utils/logger";
 
 export interface ScheduleHandle {
   /** Resolves when the (one-shot) job is done. For cron mode, never resolves. */

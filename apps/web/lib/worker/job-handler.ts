@@ -3,9 +3,9 @@ import { type Db, eventRepo, runRepo } from "@hatch-crawler/db";
 import { runSpider, setCrawlerConfig } from "@hatch-crawler/crawler";
 import type { CrawlerEvent, EventLevel } from "@hatch-crawler/shared";
 import type { CrawlJobData } from "@hatch-crawler/db";
-import { getSpiderFactory } from "../spider-registry.js";
-import { PostgresStorage } from "./postgres-storage.js";
-import { publish } from "./event-bus.js";
+import { getSpiderFactory } from "../spider-registry";
+import { PostgresStorage } from "./postgres-storage";
+import { publish } from "./event-bus";
 
 /**
  * 单个 crawl job 的处理函数。

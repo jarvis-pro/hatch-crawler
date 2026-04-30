@@ -1,8 +1,8 @@
-import { BaseSpider, type SpiderContext } from "../core/spider.js";
-import { extractNextData } from "../parsers/next-data-parser.js";
-import { extractLinks, extractMeta, loadHtml } from "../parsers/html-parser.js";
-import { getHost } from "../utils/url.js";
-import { logger } from "../utils/logger.js";
+import { BaseSpider, type SpiderContext } from "../core/spider";
+import { extractNextData } from "../parsers/next-data-parser";
+import { extractLinks, extractMeta, loadHtml } from "../parsers/html-parser";
+import { getHost } from "../utils/url";
+import { logger } from "../utils/logger";
 
 /**
  * Example spider for a Next.js blog/marketing site.
