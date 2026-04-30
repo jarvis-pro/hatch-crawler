@@ -1,12 +1,8 @@
-# 不复制到镜像构建上下文，避免 build 慢和泄漏
 node_modules
-**/node_modules
 .next
-**/.next
 dist
-**/dist
 data
-**/*.log
+*.log
 .env
 .env.local
 .env.*.local
@@ -17,5 +13,6 @@ data
 .idea
 docs
 *.md
-!apps/web/README.md
+!README.md
 commit.sh
+scripts/flatten*.sh

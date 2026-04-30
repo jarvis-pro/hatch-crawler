@@ -1,44 +1,84 @@
 {
   "name": "hatch-crawler",
-  "version": "0.1.0",
-  "description": "A comprehensive Node.js/TypeScript crawler optimized for Next.js sites",
+  "version": "0.2.0",
+  "description": "A comprehensive Node.js/TypeScript crawler optimized for Next.js sites — full-stack with Web 看板",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.33.2",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=9"
+  },
   "scripts": {
-    "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "lint": "next lint",
+    "lint:fix": "next lint --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "pnpm typecheck && pnpm lint && pnpm format:check",
-    "dev": "pnpm --filter @hatch-crawler/web dev",
-    "start": "pnpm --filter @hatch-crawler/web start",
-    "db:migrate": "pnpm --filter @hatch-crawler/db db:migrate",
-    "db:seed": "pnpm --filter @hatch-crawler/db db:seed",
-    "smoke": "pnpm --filter @hatch-crawler/crawler smoke",
-    "clean": "pnpm -r exec rm -rf dist",
-    "prepare": "husky"
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx scripts/db-migrate.ts",
+    "db:seed": "tsx scripts/db-seed.ts",
+    "db:studio": "drizzle-kit studio",
+    "smoke": "tsx scripts/smoke.ts",
+    "prepare": "husky || true"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^3.9.1",
+    "@radix-ui/react-dialog": "^1.1.2",
+    "@radix-ui/react-dropdown-menu": "^2.1.2",
+    "@radix-ui/react-select": "^2.1.2",
+    "@radix-ui/react-slot": "^1.1.0",
+    "@radix-ui/react-tabs": "^1.1.1",
+    "@tanstack/react-query": "^5.59.0",
+    "better-sqlite3": "^11.3.0",
+    "cheerio": "^1.0.0",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
+    "drizzle-orm": "^0.39.0",
+    "got": "^14.4.2",
+    "hpagent": "^1.2.0",
+    "lucide-react": "^0.451.0",
+    "next": "^15.0.3",
+    "node-cron": "^3.0.3",
+    "p-queue": "^8.0.1",
+    "pg-boss": "^10.1.5",
+    "pino": "^9.4.0",
+    "pino-pretty": "^11.2.2",
+    "postgres": "^3.4.5",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-hook-form": "^7.53.1",
+    "sonner": "^1.7.0",
+    "tailwind-merge": "^2.5.4",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.5.0",
     "@commitlint/config-conventional": "^19.5.0",
     "@eslint/js": "^9.12.0",
+    "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^22.7.4",
+    "@types/node-cron": "^3.0.11",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "autoprefixer": "^10.4.20",
+    "drizzle-kit": "^0.30.0",
     "eslint": "^9.12.0",
+    "eslint-config-next": "^15.0.3",
     "eslint-config-prettier": "^9.1.0",
     "globals": "^15.10.0",
     "husky": "^9.1.6",
     "lint-staged": "^15.2.10",
+    "postcss": "^8.4.47",
     "prettier": "^3.3.3",
+    "tailwindcss": "^3.4.14",
     "tsx": "^4.19.1",
     "typescript": "^5.6.2",
     "typescript-eslint": "^8.8.0"
-  },
-  "engines": {
-    "node": ">=22",
-    "pnpm": ">=9"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -46,11 +86,10 @@
     ]
   },
   "lint-staged": {
-    "*.{ts,js}": [
-      "eslint --fix",
+    "*.{ts,tsx,js}": [
       "prettier --write"
     ],
-    "*.{json,md,yml,yaml}": [
+    "*.{json,md,yml,yaml,css}": [
       "prettier --write"
     ]
   }

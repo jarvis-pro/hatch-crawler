@@ -34,7 +34,7 @@ services:
   web:
     build:
       context: .
-      dockerfile: apps/web/Dockerfile
+      dockerfile: Dockerfile
     container_name: hatch-web
     restart: unless-stopped
     environment:
