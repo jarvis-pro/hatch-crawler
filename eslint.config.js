@@ -8,7 +8,15 @@ import globals from "globals";
 export default tseslint.config(
   // 全局忽略
   {
-    ignores: ["dist/**", "node_modules/**", "data/**", "coverage/**"],
+    ignores: [
+      "**/dist/**",
+      "**/node_modules/**",
+      "data/**",
+      "coverage/**",
+      // 旧的根 src/ 已迁到 packages/crawler/src，留作过渡期，
+      // 在 git 中 rm 后这条可以删
+      "src/**",
+    ],
   },
 
   // JS 默认推荐

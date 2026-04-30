@@ -7,3 +7,6 @@ pnpm-lock.yaml
 .env
 .env.*
 !.env.example
+
+# 旧的根 src/ 已迁出，过渡期保留
+src

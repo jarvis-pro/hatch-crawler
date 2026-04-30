@@ -3,28 +3,19 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { createHash } from "node:crypto";
 import { logger } from "../utils/logger.js";
-
-export interface CrawlItem {
-  url: string;
-  spider: string;
-  type: string;
-  payload: Record<string, unknown>;
-  fetchedAt?: number;
-}
+import type { CrawlItem, SaveItemResult, Storage } from "./storage.js";
 
 /**
- * Lightweight, dependency-free (no docker, no daemon) structured storage.
- * better-sqlite3 is synchronous which simplifies error handling here.
+ * SQLite 实现。同步 API 包成 async 以满足 Storage 接口。
  *
- * Tables:
- *   items   — one row per scraped logical item
- *   visited — URL fingerprints we've completed; powers incremental crawl
+ * 适用于 CLI 形态（单进程）。多进程并发写入会有锁竞争——
+ * Worker/Web 同时跑的场景请用 PostgresStorage（在 apps/worker 里实现）。
  */
-export class SqliteStorage {
+export class SqliteStorage implements Storage {
   private readonly db: Database.Database;
   private readonly insertItem: Database.Statement;
-  private readonly markVisited: Database.Statement;
-  private readonly hasVisited: Database.Statement;
+  private readonly markVisitedStmt: Database.Statement;
+  private readonly hasVisitedStmt: Database.Statement;
 
   constructor(path: string) {
     mkdirSync(dirname(path), { recursive: true });
@@ -48,10 +39,11 @@ export class SqliteStorage {
       CREATE INDEX IF NOT EXISTS idx_items_fetched_at  ON items(fetched_at);
 
       CREATE TABLE IF NOT EXISTS visited (
-        url_hash   TEXT PRIMARY KEY,
-        url        TEXT NOT NULL,
         spider     TEXT NOT NULL,
-        visited_at INTEGER NOT NULL
+        url_hash   TEXT NOT NULL,
+        url        TEXT NOT NULL,
+        visited_at INTEGER NOT NULL,
+        PRIMARY KEY (spider, url_hash)
       );
     `);
 
@@ -61,24 +53,19 @@ export class SqliteStorage {
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
 
-    this.markVisited = this.db.prepare(`
-      INSERT OR REPLACE INTO visited (url_hash, url, spider, visited_at)
+    this.markVisitedStmt = this.db.prepare(`
+      INSERT OR REPLACE INTO visited (spider, url_hash, url, visited_at)
       VALUES (?, ?, ?, ?)
     `);
 
-    this.hasVisited = this.db.prepare(`
-      SELECT 1 AS x FROM visited WHERE url_hash = ?
+    this.hasVisitedStmt = this.db.prepare(`
+      SELECT 1 AS x FROM visited WHERE spider = ? AND url_hash = ?
     `);
 
     logger.info({ path }, "sqlite storage ready");
   }
 
-  /**
-   * Insert a scraped item. Returns true if it was new content,
-   * false if a row with identical (url, content) already exists —
-   * useful for incremental crawl ("only emit when changed").
-   */
-  saveItem(item: CrawlItem): boolean {
+  async saveItem(item: CrawlItem): Promise<SaveItemResult> {
     const json = JSON.stringify(item.payload);
     const urlHash = sha1(item.url);
     const contentHash = sha1(json);
@@ -92,18 +79,22 @@ export class SqliteStorage {
       json,
       fetchedAt,
     );
-    return info.changes > 0;
+    return { isNew: info.changes > 0 };
   }
 
-  isVisited(urlHash: string): boolean {
-    return this.hasVisited.get(urlHash) !== undefined;
+  async isVisited(spider: string, urlHash: string): Promise<boolean> {
+    return this.hasVisitedStmt.get(spider, urlHash) !== undefined;
   }
 
-  markUrlVisited(url: string, urlHash: string, spider: string): void {
-    this.markVisited.run(urlHash, url, spider, Date.now());
+  async markVisited(
+    spider: string,
+    url: string,
+    urlHash: string,
+  ): Promise<void> {
+    this.markVisitedStmt.run(spider, urlHash, url, Date.now());
   }
 
-  close(): void {
+  async close(): Promise<void> {
     this.db.close();
   }
 }
