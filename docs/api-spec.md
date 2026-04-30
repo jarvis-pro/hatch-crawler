@@ -137,7 +137,7 @@ v1 不做。所有路由匿名可访问。
 
 1. 校验 `spider` 存在且 `enabled = true`
 2. 在 `runs` 表插入一行 status = `queued`
-3. 把 `{ runId, spider, overrides }` 入 BullMQ
+3. 通过 `pgboss.send('crawl', { runId, spider, overrides })` 入队
 4. 返回 runId
 
 #### `GET /api/runs`
@@ -176,7 +176,7 @@ v1 不做。所有路由匿名可访问。
 行为：
 
 1. 查 status，如果不是 `running` 返回 409
-2. 通过 Redis pub/sub 发布 `stop:{runId}` 信号
+2. 通过进程内 EventBus 发布 `stop:{runId}` 信号；同进程的 pg-boss worker 把 `runId` 对应的 `AbortController.abort()`
 3. 立即把 `runs.status` 改为 `stopped`（worker 收到信号后会清理资源）
 4. 返回 `{ ok: true }`
 
@@ -295,7 +295,8 @@ Connection: keep-alive
 
 **事件格式：**
 
-每条事件由 worker 发布到 Redis 通道 `events:{runId}`，Web 的 SSE handler 转发：
+进程内 pg-boss worker 把每个 `CrawlerEvent` 推到内存 EventBus，
+SSE handler 订阅 `runId` 对应的 channel 并转发给浏览器：
 
 ```
 event: log

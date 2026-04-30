@@ -1,3 +1,5 @@
 packages:
   - "packages/*"
   - "apps/*"
+  # apps/cli 已在方案 B 中废弃，下次提交里 git rm；过渡期排除
+  - "!apps/cli"

@@ -13,7 +13,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "pnpm typecheck && pnpm lint && pnpm format:check",
-    "crawl": "pnpm --filter @hatch-crawler/cli crawl",
+    "dev": "echo 'apps/web 待 Phase 3 实现；引擎调试请用 pnpm smoke' && exit 1",
+    "smoke": "pnpm --filter @hatch-crawler/crawler smoke",
     "clean": "pnpm -r exec rm -rf dist",
     "prepare": "husky"
   },

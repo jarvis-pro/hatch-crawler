@@ -2,6 +2,7 @@
 
 > 本文定义 hatch-crawler v1 的所有持久化数据结构。
 > 数据库为 **Postgres 16**，ORM 为 **Drizzle**。
+> 任务队列复用同一个 Postgres，由 **pg-boss** 自动管理 `pgboss` schema 下的队列表（不在本文中描述）。
 
 ## ER 概览
 
@@ -239,9 +240,10 @@ export const settings = pgTable("settings", {
 
 ## 迁移策略
 
-- 用 Drizzle Kit：`drizzle-kit generate` 自动生成 SQL
+- 用 Drizzle Kit：`drizzle-kit generate` 自动生成业务表 SQL
 - 迁移文件存在 `packages/db/migrations/`
-- 启动时自动跑：`apps/worker` 和 `apps/web` 启动入口都会调用 `migrate()`，但加分布式锁（用 `pg_advisory_lock`）避免并发执行
+- `apps/web` 启动入口（Next.js `instrumentation.ts`）调一次 `migrate()` 即可（单进程，无需分布式锁）
+- pg-boss 的队列表由它自己用 `boss.start()` 时按需建出，不归我们管
 
 ## 数据保留与清理
 

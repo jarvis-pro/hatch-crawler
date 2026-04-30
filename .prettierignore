@@ -10,3 +10,6 @@ pnpm-lock.yaml
 
 # 旧的根 src/ 已迁出，过渡期保留
 src
+
+# apps/cli 在方案 B 中废弃，下次提交 git rm
+apps/cli

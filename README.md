@@ -1,7 +1,7 @@
 # hatch-crawler
 
-一个用 Node.js + TypeScript 写的、面向 **Next.js 站点**优化的全功能爬虫脚手架。
-为学习目的设计，但架构按生产级思路组织，方便后续扩展。
+一个用 Node.js + TypeScript 写的、面向 **Next.js 站点**优化的全功能爬虫。
+v1 起从 CLI 工具升级为带 Web 看板的全栈应用，按 pnpm workspace 组织。
 
 ## 为什么针对 Next.js？
 
@@ -11,96 +11,101 @@
 - SSG/ISR 页面提供 `_next/data/{buildId}/{path}.json` JSON 接口
 - 直接命中 JSON 比 DOM 解析稳得多，也更快
 
-`src/parsers/next-data-parser.ts` 就是围绕这两点做的。
+`packages/crawler/src/parsers/next-data-parser.ts` 就是围绕这两点做的。
 
-## 项目结构
+## 项目结构（monorepo）
 
 ```
-src/
-├── config/         环境变量与运行时配置
-├── core/
-│   ├── fetcher.ts  HTTP 客户端 (got + 重试 + 限流 + 代理)
-│   ├── queue.ts    URL 前沿队列 + 指纹去重
-│   ├── spider.ts   引擎：并发、enqueue/emit、统计
-│   └── scheduler.ts node-cron 调度
-├── middleware/
-│   ├── proxy-pool.ts   代理池 + 失败计数
-│   ├── ua-pool.ts      User-Agent 轮换
-│   └── rate-limiter.ts 按域名限流
-├── parsers/
-│   ├── next-data-parser.ts  __NEXT_DATA__ 抽取
-│   └── html-parser.ts       Cheerio 兜底
-├── storage/
-│   ├── sqlite-storage.ts    SQLite 结构化存储 + 增量去重
-│   └── file-storage.ts      JSONL 追加写
-├── spiders/
-│   └── nextjs-blog-spider.ts  示例 Spider
-└── index.ts        入口
+hatch-crawler/
+├── docs/                      v1 设计文档（先读）
+│   ├── architecture.md        架构总览、服务拓扑
+│   ├── data-model.md          Postgres schema
+│   ├── api-spec.md            REST + SSE 契约
+│   ├── dashboard-spec.md      看板页面线框
+│   └── roadmap.md             4 阶段实施路线
+├── packages/
+│   ├── crawler/               爬虫核心引擎库（Storage / Spider / Fetcher）
+│   │   └── src/
+│   │       ├── core/          fetcher / queue / spider / scheduler
+│   │       ├── middleware/    proxy-pool / ua-pool / rate-limiter
+│   │       ├── parsers/       next-data / html
+│   │       ├── storage/       Storage 接口 + SqliteStorage
+│   │       ├── spiders/       内置示例 Spider
+│   │       └── utils/         logger / url 工具
+│   ├── shared/                跨模块共享类型（CrawlerEvent 等）
+│   └── db/                    [Phase 2] Drizzle + Postgres + pg-boss
+└── apps/
+    └── web/                   [Phase 3] Next.js 看板 + API + 内置 Worker
 ```
+
+> v0 的 `apps/cli` 在 v1 演进过程中会被删除。在 Phase 3 完成前，
+> 引擎自测用 `pnpm --filter @hatch-crawler/crawler smoke`（内存 Storage 跑一次示例 Spider）。
 
 ## 快速开始
 
 > 环境要求：**Node.js 22+**（已通过 `.nvmrc` 与 `engines.node` 锁定，
-> 用 nvm/fnm/volta 的话进入项目目录会自动切到 Node 22）。
+> 用 nvm/fnm/volta 进入项目目录会自动切到 Node 22）。
 >
 > 本项目使用 **pnpm** 管理依赖（`packageManager` 字段已锁定版本）。
 > 没装 pnpm 的话：`npm i -g pnpm` 或参考 [pnpm.io/installation](https://pnpm.io/installation)。
 
 ```bash
-# 1. 安装（同时会通过 prepare 脚本自动初始化 husky）
+# 1. 安装（同时通过 prepare 脚本自动初始化 husky）
 pnpm install
 
-# 2. 配置（可直接用默认值）
-cp .env.example .env
+# 2. 引擎烟雾测试（不依赖 Postgres，用内存 Storage 跑示例 Spider）
+pnpm smoke
 
-# 3. 运行（一次性）
-pnpm crawl
-
-# 4. 一键体检：typecheck + lint + format
+# 3. 一键体检：typecheck + lint + format
 pnpm check
+```
 
-# 5. 编译产物
-pnpm build
+> Phase 3 完成后，`pnpm dev` 会启动 Next.js 看板（同时拉起内置 worker），
+> 在浏览器里完成所有交互。在那之前 `pnpm dev` 会提示去用 `pnpm smoke`。
+
+## 命令一览
+
+| 命令                                | 作用                                           |
+| ----------------------------------- | ---------------------------------------------- |
+| `pnpm dev`                          | 启动开发环境（Phase 3 后 = 启动 Next.js 看板） |
+| `pnpm smoke`                        | 引擎烟雾测试（内存 Storage，不依赖 DB）        |
+| `pnpm build`                        | 编译所有 workspace 包                          |
+| `pnpm typecheck`                    | 全量类型检查                                   |
+| `pnpm lint` / `pnpm lint:fix`       | ESLint                                         |
+| `pnpm format` / `pnpm format:check` | Prettier                                       |
+| `pnpm check`                        | 三连：typecheck + lint + format:check          |
+| `pnpm clean`                        | 清空所有 dist/                                 |
+
+针对单个子包：
+
+```bash
+pnpm --filter @hatch-crawler/crawler typecheck
+pnpm --filter @hatch-crawler/crawler smoke
 ```
 
 ## 工程化基建
 
-| 工具            | 配置文件                              | 说明                                          |
-| --------------- | ------------------------------------- | --------------------------------------------- |
-| Prettier        | `.prettierrc.json`, `.prettierignore` | 统一格式                                      |
-| ESLint 9 (flat) | `eslint.config.js`                    | TS 静态检查，已关闭与 Prettier 冲突的规则     |
-| EditorConfig    | `.editorconfig`                       | 跨编辑器风格一致                              |
-| Husky           | `.husky/`                             | git 钩子托管                                  |
-| lint-staged     | `package.json` `lint-staged` 字段     | 提交前只对暂存文件跑 lint + format            |
-| commitlint      | `commitlint.config.js`                | 校验 Conventional Commits（支持中文 subject） |
-
-常用命令：
-
-```bash
-pnpm lint           # 全量 lint
-pnpm lint:fix       # 自动修复
-pnpm format         # 全量格式化
-pnpm format:check   # 仅检查
-pnpm typecheck      # tsc --noEmit
-pnpm check          # 三连：typecheck + lint + format:check
-```
+| 工具            | 配置文件                              | 说明                                      |
+| --------------- | ------------------------------------- | ----------------------------------------- |
+| Prettier        | `.prettierrc.json`, `.prettierignore` | 统一格式                                  |
+| ESLint 9 (flat) | `eslint.config.js`                    | TS 静态检查，已关闭与 Prettier 冲突的规则 |
+| EditorConfig    | `.editorconfig`                       | 跨编辑器风格一致                          |
+| Husky           | `.husky/`                             | git 钩子托管                              |
+| lint-staged     | `package.json` `lint-staged` 字段     | 提交前只对暂存文件跑 lint + format        |
+| commitlint      | `commitlint.config.js`                | Conventional Commits（支持中文 subject）  |
 
 提交时会自动触发：
 
 1. `pre-commit`: 对暂存的 `.ts/.js/.json/.md` 跑 `eslint --fix` + `prettier --write`
-2. `commit-msg`: 校验提交信息是否符合 `<type>: <描述>`，type 取自 `feat / fix / refactor / perf / style / test / docs / build / ci / chore / revert`
+2. `commit-msg`: 校验 commit message 是否符合 `<type>: <描述>`
 
 > 注：`better-sqlite3` 是原生模块，pnpm 10 默认不跑 postinstall 脚本。
-> 已经在 `package.json` 的 `pnpm.onlyBuiltDependencies` 里把它白名单出来，
-> 所以 `pnpm install` 会自动编译。如果首次安装报错 (`Ignored build scripts`)，
-> 跑一次 `pnpm approve-builds` 即可。
-
-爬取结果默认写入：
-
-- `data/crawler.sqlite` —— 结构化表（`items`、`visited`）
-- `data/items.jsonl` —— 追加式 JSON Lines
+> 已经在根 `package.json` 的 `pnpm.onlyBuiltDependencies` 里把它白名单出来，
+> 所以 `pnpm install` 会自动编译。
 
 ## 写一个新的 Spider
+
+新建 `packages/crawler/src/spiders/my-spider.ts`：
 
 ```ts
 import { BaseSpider, type SpiderContext } from "../core/spider.js";
@@ -120,13 +125,13 @@ export class MySpider extends BaseSpider {
       payload: { props: data?.props?.pageProps },
     });
 
-    // 派发更多 URL
     ctx.enqueue({ url: "https://example.com/other", type: "detail" });
   }
 }
 ```
 
-然后在 `src/index.ts` 里把它换进去即可。
+然后在 `packages/crawler/scripts/smoke.ts` 把 `NextJsBlogSpider` 换成你的 Spider 跑烟雾测试。
+Phase 3 加上看板后，可以直接在 UI 里选择/配置 Spider，不需要改代码。
 
 ## 反反爬开关（按需）
 
@@ -143,24 +148,34 @@ PER_HOST_INTERVAL_MS=500
 CONCURRENCY=4
 ```
 
-UA 池在 `src/middleware/ua-pool.ts` 里维护，按需追加。
+UA 池在 `packages/crawler/src/middleware/ua-pool.ts` 里维护，按需追加。
 
 ## 增量爬取
 
-- `visited` 表按 URL 指纹记录已访问，重启后自动跳过
+- `visited` 表按 `(spider, url_hash)` 记录已访问，重启后自动跳过
 - `items` 表按 `(spider, url_hash, content_hash)` 唯一约束，
   内容没变就不会重复入库 —— 适合"只在内容变化时通知"的场景
 
+Phase 3 起统一落 Postgres；smoke 测试用内存 Storage。
+
 ## 调度
 
-`.env` 里设置 `CRON_SCHEDULE=*/30 * * * *` 即可每 30 分钟触发一次。
-没设置就跑一次然后退出。
+Phase 3 起，看板上每个 Spider 可以单独配 cron（pg-boss schedule 实现）。
+
+## 全栈版本
+
+完整看板实现在 `docs/roadmap.md` 里分 4 阶段推进：
+
+1. **Phase 1** — pnpm workspace + 抽离 crawler 包 ✅
+2. **Phase 2** — `packages/db`（Drizzle + Postgres + pg-boss）
+3. **Phase 3** — `apps/web`（Next.js 看板 + API + SSE + 内置 Worker）
+4. **Phase 4** — Docker Compose 一键起
+
+每个 Phase 完成都能独立验证。
 
 ## 后续扩展方向
 
-- **真正的分布式**：把 `UrlQueue` 替换为 BullMQ + Redis，
-  多个 worker 进程消费同一个队列。接口已经留好了。
-- **JS 渲染兜底**：对没有 `__NEXT_DATA__` 的 SPA 站点，
-  集成 Playwright 作为 Fetcher 的另一个实现。
-- **结构化 schema**：引入 `zod` 在 `emit` 时校验 payload。
-- **监控**：对接 OpenTelemetry / Prometheus。
+- **JS 渲染兜底**：对没有 `__NEXT_DATA__` 的 SPA 站点，集成 Playwright 作为 Fetcher 的另一个实现
+- **结构化 schema**：在 `emit` 时用 Zod 校验 payload
+- **监控**：对接 OpenTelemetry / Prometheus
+- **认证**：NextAuth + Postgres adapter（v2）

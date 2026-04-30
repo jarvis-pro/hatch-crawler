@@ -16,6 +16,8 @@ export default tseslint.config(
       // 旧的根 src/ 已迁到 packages/crawler/src，留作过渡期，
       // 在 git 中 rm 后这条可以删
       "src/**",
+      // apps/cli 在方案 B 中废弃，下次提交 git rm；过渡期不 lint
+      "apps/cli/**",
     ],
   },
 
