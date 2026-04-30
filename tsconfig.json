@@ -1,4 +1,8 @@
 {
-  "files": [],
-  "include": []
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["packages/*/src/**/*", "apps/*/src/**/*"],
+  "exclude": ["**/node_modules", "**/dist", "**/data", "src"]
 }
