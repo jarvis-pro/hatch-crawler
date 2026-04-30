@@ -11,6 +11,9 @@ export {
   type CrawlJobData,
 } from "./boss.js";
 
+// 迁移
+export { runMigrations, type MigrateResult } from "./migrate.js";
+
 // schema 全部表 + 类型
 export * from "./schema.js";
 
