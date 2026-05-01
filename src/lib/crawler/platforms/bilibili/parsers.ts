@@ -132,6 +132,102 @@ export function vlistItemToPayload(item: BiliVlistItem): Record<string, unknown>
   };
 }
 
+// ── 视频详情接口 GET /x/web-interface/view ────────────────────────────────────
+
+export interface BiliVideoStat {
+  view?: number;
+  danmaku?: number;
+  reply?: number;
+  favorite?: number;
+  coin?: number;
+  share?: number;
+  like?: number;
+}
+
+export interface BiliVideoOwner {
+  mid: number;
+  name: string;
+  face?: string;
+}
+
+export interface BiliVideoPage {
+  cid: number;
+  page: number;
+  from: string;
+  part: string;
+  duration: number;
+}
+
+export interface BiliVideoTag {
+  tag_id?: number;
+  tag_name?: string;
+}
+
+export interface BiliVideoDetail {
+  aid: number;
+  bvid: string;
+  title: string;
+  desc?: string;
+  pic?: string;
+  pubdate?: number;
+  duration?: number;
+  owner?: BiliVideoOwner;
+  stat?: BiliVideoStat;
+  pages?: BiliVideoPage[];
+  tags?: BiliVideoTag[];
+  tid?: number;
+  tname?: string;
+}
+
+export interface BiliVideoDetailResponse {
+  code: number;
+  message?: string;
+  data?: BiliVideoDetail;
+}
+
+/**
+ * 将视频详情接口响应转换为标准 payload。
+ */
+export function videoDetailToPayload(detail: BiliVideoDetail): Record<string, unknown> {
+  return {
+    platform: 'bilibili',
+    kind: 'video',
+    sourceId: detail.bvid,
+    url: `https://www.bilibili.com/video/${detail.bvid}`,
+    title: detail.title,
+    description: detail.desc || undefined,
+    author: detail.owner
+      ? {
+          id: String(detail.owner.mid),
+          name: detail.owner.name,
+          avatar: detail.owner.face,
+          url: `https://space.bilibili.com/${String(detail.owner.mid)}`,
+        }
+      : undefined,
+    publishedAt: detail.pubdate ? new Date(detail.pubdate * 1000).toISOString() : undefined,
+    durationMs: detail.duration ? detail.duration * 1000 : undefined,
+    category: detail.tname,
+    metrics: {
+      views: detail.stat?.view,
+      likes: detail.stat?.like,
+      coins: detail.stat?.coin,
+      favorites: detail.stat?.favorite,
+      shares: detail.stat?.share,
+      comments: detail.stat?.reply,
+      danmaku: detail.stat?.danmaku,
+    },
+    media: detail.pic
+      ? [{ kind: 'thumbnail', url: normalizePic(detail.pic), mime: 'image/jpeg' }]
+      : undefined,
+    tags: (detail.tags ?? []).map((t) => t.tag_name).filter(Boolean),
+    pages: (detail.pages ?? []).map((p) => ({
+      page: p.page,
+      title: p.part,
+      durationMs: p.duration * 1000,
+    })),
+  };
+}
+
 /**
  * 将 BiliSearchItem 转换为符合 VideoItem kind 的 payload（来自搜索接口）。
  */

@@ -30,6 +30,13 @@ export function buildUserVideosUrl(opts: {
   return u.toString();
 }
 
+/** 构造视频详情 URL（/x/web-interface/view） */
+export function buildVideoDetailUrl(bvid: string): string {
+  const u = new URL(`${BASE}/x/web-interface/view`);
+  u.searchParams.set('bvid', bvid);
+  return u.toString();
+}
+
 /** 构造关键词搜索 URL（/x/web-interface/search/type） */
 export function buildSearchUrl(opts: {
   query: string;
