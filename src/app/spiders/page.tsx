@@ -375,13 +375,13 @@ function paramsValid(spiderName: string, params: Record<string, unknown>): boole
 function RunParamsDialog({ spider, onClose }: { spider: Spider; onClose: () => void }) {
   const qc = useQueryClient();
   const [params, setParams] = useState<Record<string, unknown>>({
-    ...defaultParamsFor(spider.name),
+    ...defaultParamsFor(spider.type),
     ...spider.defaultParams,
   });
 
   const run = useMutation({
     mutationFn: () =>
-      api.post<{ id: string }>('/api/runs', { spider: spider.name, overrides: params }),
+      api.post<{ id: string }>('/api/runs', { spiderId: spider.id, overrides: params }),
     onSuccess: ({ id }) => {
       toast.success(`Run ${id.slice(0, 8)} 已入队`);
       void qc.invalidateQueries({ queryKey: ['runs'] });
@@ -394,18 +394,18 @@ function RunParamsDialog({ spider, onClose }: { spider: Spider; onClose: () => v
   });
 
   const hasParamsSchema =
-    Boolean(SPIDER_PARAM_SCHEMAS[spider.name]) || Object.keys(spider.defaultParams).length > 0;
-  const valid = paramsValid(spider.name, params);
+    Boolean(SPIDER_PARAM_SCHEMAS[spider.type]) || Object.keys(spider.defaultParams).length > 0;
+  const valid = paramsValid(spider.type, params);
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>运行 {spider.displayName}</DialogTitle>
+          <DialogTitle>运行 {spider.name}</DialogTitle>
         </DialogHeader>
         <div className="py-2">
           {hasParamsSchema ? (
-            <ParamsForm spiderName={spider.name} value={params} onChange={setParams} />
+            <ParamsForm spiderName={spider.type} value={params} onChange={setParams} />
           ) : (
             <p className="text-sm text-muted-foreground">该 Spider 无需配置参数，直接运行即可。</p>
           )}
@@ -425,11 +425,6 @@ function RunParamsDialog({ spider, onClose }: { spider: Spider; onClose: () => v
 
 // ── NewSpiderDialog ───────────────────────────────────────────────────────────
 
-/** 将 Spider 类型名转换为合法的名称建议（仅供初始填充） */
-function suggestName(type: string): string {
-  return type;
-}
-
 function NewSpiderDialog({
   registry,
   onClose,
@@ -439,13 +434,8 @@ function NewSpiderDialog({
 }) {
   const qc = useQueryClient();
   const firstType = registry[0]?.name ?? '';
-  // selectedType：注册表类型键（"youtube-channel-videos" 等）
   const [selectedType, setSelectedType] = useState(firstType);
-  // customName：用户自定义的唯一标识符（PK），默认与类型名相同
-  const [customName, setCustomName] = useState(suggestName(firstType));
-  // 记录用户是否手动修改过 customName，如未修改则跟随类型自动更新
-  const [nameManuallyEdited, setNameManuallyEdited] = useState(false);
-  const [displayName, setDisplayName] = useState(SPIDER_DISPLAY_NAMES[firstType] ?? firstType);
+  const [spiderName, setSpiderName] = useState(SPIDER_DISPLAY_NAMES[firstType] ?? firstType);
   const [enabled, setEnabled] = useState(true);
   const [params, setParams] = useState<Record<string, unknown>>(defaultParamsFor(firstType));
   // JSON 导入面板
@@ -455,25 +445,21 @@ function NewSpiderDialog({
 
   const handleTypeChange = (type: string) => {
     setSelectedType(type);
-    setDisplayName(SPIDER_DISPLAY_NAMES[type] ?? type);
+    setSpiderName(SPIDER_DISPLAY_NAMES[type] ?? type);
     setParams(defaultParamsFor(type));
-    // 若用户还未手动编辑名称，则自动跟随类型更新
-    if (!nameManuallyEdited) {
-      setCustomName(suggestName(type));
-    }
   };
 
   function handleImport() {
     setImportError('');
     try {
       const obj = JSON.parse(importJson) as Record<string, unknown>;
-      const type = String(obj.name ?? obj.spiderType ?? '');
+      // 兼容新格式（type + name）和旧格式（name + displayName）
+      const type = String(obj.type ?? obj.name ?? obj.spiderType ?? '');
       if (type && registry.some((e) => e.name === type)) {
         setSelectedType(type);
-        if (!nameManuallyEdited) setCustomName(suggestName(type));
-        setDisplayName(String(obj.displayName ?? SPIDER_DISPLAY_NAMES[type] ?? type));
       }
-      if (obj.displayName) setDisplayName(String(obj.displayName));
+      const displayVal = String(obj.name ?? obj.displayName ?? SPIDER_DISPLAY_NAMES[type] ?? type);
+      if (displayVal) setSpiderName(displayVal);
       if (typeof obj.enabled === 'boolean') setEnabled(obj.enabled);
       if (obj.defaultParams && typeof obj.defaultParams === 'object') {
         setParams(obj.defaultParams as Record<string, unknown>);
@@ -489,21 +475,18 @@ function NewSpiderDialog({
   // 从注册表条目里取 platform，自动写入 DB
   const selectedEntry = registry.find((e) => e.name === selectedType);
 
-  // 名称格式校验：只允许小写字母、数字、连字符，长度 1-64
-  const nameValid = /^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$|^[a-z0-9]$/.test(customName.trim());
-
   const save = useMutation({
     mutationFn: () =>
-      api.put<Spider>(`/api/spiders/${customName.trim()}`, {
-        spiderType: selectedType,
-        displayName,
+      api.post<Spider>('/api/spiders', {
+        type: selectedType,
+        name: spiderName,
         startUrls: [],
         enabled,
         platform: selectedEntry?.platform ?? null,
         defaultParams: params,
       }),
     onSuccess: () => {
-      toast.success('Spider 已创建/更新');
+      toast.success('Spider 已创建');
       void qc.invalidateQueries({ queryKey: ['spiders'] });
       onClose();
     },
@@ -511,10 +494,7 @@ function NewSpiderDialog({
   });
 
   const valid =
-    nameValid &&
-    displayName.trim().length > 0 &&
-    selectedType.length > 0 &&
-    paramsValid(selectedType, params);
+    spiderName.trim().length > 0 && selectedType.length > 0 && paramsValid(selectedType, params);
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -543,7 +523,7 @@ function NewSpiderDialog({
             </p>
             <textarea
               className="h-48 w-full rounded-md border border-input bg-background p-2 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-              placeholder='{"name": "youtube-search", "displayName": "...", "defaultParams": {...}}'
+              placeholder='{"type": "youtube-search", "name": "我的 YouTube 搜索", "defaultParams": {...}}'
               value={importJson}
               onChange={(e) => setImportJson(e.target.value)}
             />
@@ -578,41 +558,13 @@ function NewSpiderDialog({
                 </select>
               </div>
 
-              {/* Spider 名称（唯一标识） */}
+              {/* 名称 */}
               <div className="space-y-1">
-                <label className="text-sm font-medium">
-                  Spider 名称
-                  <span className="ml-1 text-xs font-normal text-muted-foreground">
-                    （唯一 ID，可自定义）
-                  </span>
-                </label>
+                <label className="text-sm font-medium">名称</label>
                 <Input
-                  value={customName}
-                  onChange={(e) => {
-                    setCustomName(e.target.value);
-                    setNameManuallyEdited(true);
-                  }}
-                  placeholder="my-youtube-channel"
-                  className={!nameValid && customName.length > 0 ? 'border-red-400' : ''}
-                />
-                {!nameValid && customName.length > 0 && (
-                  <p className="text-xs text-red-500">
-                    只允许小写字母、数字和连字符（-），且不能以连字符开头或结尾
-                  </p>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  同一类型可创建多个实例，用不同名称区分。例如两个 YouTube 频道可分别命名为{' '}
-                  <code>yt-tech</code> 和 <code>yt-gaming</code>。
-                </p>
-              </div>
-
-              {/* 显示名称 */}
-              <div className="space-y-1">
-                <label className="text-sm font-medium">显示名称</label>
-                <Input
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="My Spider"
+                  value={spiderName}
+                  onChange={(e) => setSpiderName(e.target.value)}
+                  placeholder="例：YouTube 健身频道"
                 />
               </div>
 
@@ -691,9 +643,9 @@ function CronDialog({ spider, onClose }: { spider: Spider; onClose: () => void }
 
   const save = useMutation({
     mutationFn: () =>
-      api.put<Spider>(`/api/spiders/${spider.name}`, {
-        spiderType: spider.spiderType,
-        displayName: spider.displayName,
+      api.put<Spider>(`/api/spiders/${spider.id}`, {
+        type: spider.type,
+        name: spider.name,
         startUrls: spider.startUrls,
         allowedHosts: spider.allowedHosts,
         maxDepth: spider.maxDepth,
@@ -724,7 +676,12 @@ function CronDialog({ spider, onClose }: { spider: Spider; onClose: () => void }
     >
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>定时调度 — {spider.name}</DialogTitle>
+          <DialogTitle>
+            定时调度 — {spider.name}
+            <span className="ml-2 font-mono text-xs font-normal text-muted-foreground">
+              {spider.type}
+            </span>
+          </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-1">
@@ -775,6 +732,42 @@ function CronDialog({ spider, onClose }: { spider: Spider; onClose: () => void }
   );
 }
 
+// ── ConfirmDeleteDialog ───────────────────────────────────────────────────────
+
+function ConfirmDeleteDialog({
+  spider,
+  onConfirm,
+  onClose,
+  isPending,
+}: {
+  spider: Spider;
+  onConfirm: () => void;
+  onClose: () => void;
+  isPending: boolean;
+}) {
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>删除 Spider</DialogTitle>
+        </DialogHeader>
+        <p className="py-1 text-sm text-muted-foreground">
+          确定要删除「<span className="font-medium text-foreground">{spider.name}</span>」吗？ 该
+          Spider 的所有运行记录和事件日志也会一并删除，此操作不可撤销。
+        </p>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={isPending}>
+            取消
+          </Button>
+          <Button variant="destructive" onClick={onConfirm} disabled={isPending}>
+            {isPending ? '删除中…' : '确认删除'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── SpidersPage ───────────────────────────────────────────────────────────────
 
 export default function SpidersPage() {
@@ -782,6 +775,7 @@ export default function SpidersPage() {
   const [runTarget, setRunTarget] = useState<Spider | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [cronTarget, setCronTarget] = useState<Spider | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Spider | null>(null);
 
   const { data: spiders = [], isLoading } = useQuery({
     queryKey: ['spiders'],
@@ -793,11 +787,21 @@ export default function SpidersPage() {
     queryFn: () => api.get<RegistryEntry[]>('/api/spiders/registry'),
   });
 
+  const deleteSpider = useMutation({
+    mutationFn: (id: string) => api.delete<{ deleted: string }>(`/api/spiders/${id}`),
+    onSuccess: () => {
+      toast.success('Spider 已删除');
+      setDeleteTarget(null);
+      void qc.invalidateQueries({ queryKey: ['spiders'] });
+    },
+    onError: (err) => toast.error(`删除失败：${String(err)}`),
+  });
+
   const toggleEnabled = useMutation({
     mutationFn: (s: Spider) =>
-      api.put<Spider>(`/api/spiders/${s.name}`, {
-        spiderType: s.spiderType,
-        displayName: s.displayName,
+      api.put<Spider>(`/api/spiders/${s.id}`, {
+        type: s.type,
+        name: s.name,
         startUrls: s.startUrls,
         allowedHosts: s.allowedHosts,
         maxDepth: s.maxDepth,
@@ -831,8 +835,7 @@ export default function SpidersPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>显示名称</TableHead>
+                <TableHead>名称</TableHead>
                 <TableHead>平台</TableHead>
                 <TableHead>Cron</TableHead>
                 <TableHead>启用</TableHead>
@@ -842,29 +845,28 @@ export default function SpidersPage() {
             <TableBody>
               {isLoading && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center text-muted-foreground">
                     加载中…
                   </TableCell>
                 </TableRow>
               )}
               {!isLoading && spiders.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center text-muted-foreground">
                     暂无 Spider，点击"新建 Spider"添加。
                   </TableCell>
                 </TableRow>
               )}
               {spiders.map((s) => (
-                <TableRow key={s.name}>
-                  <TableCell className="font-mono text-xs">
-                    <Link href={`/spiders/${s.name}`} className="hover:underline">
+                <TableRow key={s.id}>
+                  <TableCell>
+                    <Link href={`/spiders/${s.id}`} className="font-medium hover:underline">
                       {s.name}
                     </Link>
-                    {s.spiderType && s.spiderType !== s.name && (
-                      <div className="mt-0.5 text-muted-foreground">{s.spiderType}</div>
-                    )}
+                    <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">
+                      {s.type} · {s.id.slice(0, 8)}
+                    </div>
                   </TableCell>
-                  <TableCell>{s.displayName}</TableCell>
                   <TableCell>
                     {s.platform ? (
                       <span
@@ -901,9 +903,20 @@ export default function SpidersPage() {
                     </button>
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button size="sm" disabled={!s.enabled} onClick={() => setRunTarget(s)}>
-                      立即运行
-                    </Button>
+                    <div className="flex items-center justify-end gap-2">
+                      <Button size="sm" disabled={!s.enabled} onClick={() => setRunTarget(s)}>
+                        立即运行
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-muted-foreground hover:text-destructive"
+                        onClick={() => setDeleteTarget(s)}
+                        title="删除此 Spider 及其所有运行记录"
+                      >
+                        删除
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -915,6 +928,14 @@ export default function SpidersPage() {
       {runTarget && <RunParamsDialog spider={runTarget} onClose={() => setRunTarget(null)} />}
       {showCreate && <NewSpiderDialog registry={registry} onClose={() => setShowCreate(false)} />}
       {cronTarget && <CronDialog spider={cronTarget} onClose={() => setCronTarget(null)} />}
+      {deleteTarget && (
+        <ConfirmDeleteDialog
+          spider={deleteTarget}
+          isPending={deleteSpider.isPending}
+          onConfirm={() => deleteSpider.mutate(deleteTarget.id)}
+          onClose={() => setDeleteTarget(null)}
+        />
+      )}
     </>
   );
 }

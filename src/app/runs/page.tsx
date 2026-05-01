@@ -55,15 +55,15 @@ export default function RunsPage() {
   const searchParams = useSearchParams();
   const qc = useQueryClient();
 
-  const [spider, setSpider] = useState(() => searchParams.get('spider') ?? '');
+  const [spiderId, setSpiderId] = useState(() => searchParams.get('spiderId') ?? '');
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  // URL 参数变化时同步（如浏览器后退到带 ?spider= 的 URL）
+  // URL 参数变化时同步（如浏览器后退到带 ?spiderId= 的 URL）
   useEffect(() => {
-    const s = searchParams.get('spider') ?? '';
-    setSpider(s);
+    const s = searchParams.get('spiderId') ?? '';
+    setSpiderId(s);
     setPage(1);
     setSelected(new Set());
   }, [searchParams]);
@@ -74,12 +74,12 @@ export default function RunsPage() {
       pageSize: String(PAGE_SIZE),
     });
     if (status) p.set('status', status);
-    if (spider) p.set('spider', spider);
+    if (spiderId) p.set('spiderId', spiderId);
     return `/api/runs?${p.toString()}`;
   }
 
   const { data, isLoading } = useQuery({
-    queryKey: ['runs', 'list', status, spider, page],
+    queryKey: ['runs', 'list', status, spiderId, page],
     queryFn: () => api.get<ListResult<Run>>(buildQuery()),
     refetchInterval: 5_000,
   });
@@ -172,27 +172,27 @@ export default function RunsPage() {
 
         {/* Spider 下拉筛选 */}
         <select
-          value={spider}
+          value={spiderId}
           onChange={(e) => {
-            setSpider(e.target.value);
+            setSpiderId(e.target.value);
             resetPage();
           }}
           className="rounded-md border border-input bg-background px-3 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
         >
           <option value="">所有 Spider</option>
           {spiders.map((s) => (
-            <option key={s.name} value={s.name}>
-              {s.displayName}
+            <option key={s.id} value={s.id}>
+              {s.name}
             </option>
           ))}
         </select>
 
         {/* 清除 Spider 筛选 */}
-        {spider && (
+        {spiderId && (
           <button
             className="text-xs text-muted-foreground hover:text-foreground"
             onClick={() => {
-              setSpider('');
+              setSpiderId('');
               resetPage();
             }}
           >
@@ -282,9 +282,13 @@ export default function RunsPage() {
                       </Link>
                     </TableCell>
                     <TableCell className="text-sm">
-                      <Link href={`/spiders/${r.spiderName}`} className="hover:underline">
-                        {r.spiderName}
-                      </Link>
+                      {r.spiderId ? (
+                        <Link href={`/spiders/${r.spiderId}`} className="hover:underline">
+                          {r.spiderName}
+                        </Link>
+                      ) : (
+                        <span className="text-muted-foreground">{r.spiderName}</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <RunStatusBadge status={r.status} />

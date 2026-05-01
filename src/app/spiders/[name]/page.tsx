@@ -21,8 +21,8 @@ import { StatsCard } from '@/components/stats/stats-card';
 /** 导出 Spider 配置为 JSON 文件 */
 function exportSpiderConfig(spider: Spider) {
   const config = {
+    type: spider.type,
     name: spider.name,
-    displayName: spider.displayName,
     description: spider.description,
     platform: spider.platform,
     startUrls: spider.startUrls,
@@ -38,7 +38,7 @@ function exportSpiderConfig(spider: Spider) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `spider-${spider.name}.json`;
+  a.download = `spider-${spider.type}-${spider.id.slice(0, 8)}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -58,34 +58,35 @@ function fmtDuration(start: string | null, end: string | null): string {
   return `${Math.floor(ms / 60_000)}m${Math.round((ms % 60_000) / 1000)}s`;
 }
 
+/**
+ * Spider 详情页。
+ * 路由参数 `name` 实际存放的是 spiders.id（UUID）。
+ * 文件夹保留 [name] 命名以避免文件系统限制，等可手动清理旧目录时再重命名。
+ */
 export default function SpiderDetailPage({ params }: { params: Promise<{ name: string }> }) {
-  const { name } = use(params);
+  const { name: id } = use(params);
   const queryClient = useQueryClient();
 
   const { data: spider, isLoading } = useQuery({
-    queryKey: ['spider', name],
-    queryFn: () => api.get<Spider>(`/api/spiders/${name}`),
+    queryKey: ['spider', id],
+    queryFn: () => api.get<Spider>(`/api/spiders/${id}`),
   });
 
-  // 重置 visited：删除该 spider 在 visited 表的所有记录，
-  // 让下次 run 不再因为指纹命中被跳过。常用于 list/search 类 URL 被锁住的情形。
   const resetVisitedMutation = useMutation({
-    mutationFn: () => api.delete<{ deleted: number }>(`/api/spiders/${name}/visited`),
+    mutationFn: () => api.delete<{ deleted: number }>(`/api/spiders/${id}/visited`),
     onSuccess: ({ deleted }) => {
       toast.success(`已重置 visited（删除 ${deleted} 条记录）`);
-      void queryClient.invalidateQueries({ queryKey: ['runs', 'spider', name] });
+      void queryClient.invalidateQueries({ queryKey: ['runs', 'spider', id] });
     },
     onError: (err) => toast.error(`重置失败：${String(err)}`),
   });
 
-  // 切换 autoDownload：抓取完成后是否自动派发附件下载
   const toggleAutoDownloadMutation = useMutation({
     mutationFn: (next: boolean) => {
       if (!spider) throw new Error('spider not loaded');
-      // PUT 是全量更新，必须把所有现有字段透传，否则会被 schema 默认值覆盖。
-      return api.put<Spider>(`/api/spiders/${name}`, {
-        spiderType: spider.spiderType,
-        displayName: spider.displayName,
+      return api.put<Spider>(`/api/spiders/${id}`, {
+        type: spider.type,
+        name: spider.name,
         description: spider.description,
         startUrls: spider.startUrls,
         allowedHosts: spider.allowedHosts,
@@ -101,7 +102,7 @@ export default function SpiderDetailPage({ params }: { params: Promise<{ name: s
     },
     onSuccess: (_, next) => {
       toast.success(next ? '已开启自动下载' : '已关闭自动下载');
-      void queryClient.invalidateQueries({ queryKey: ['spider', name] });
+      void queryClient.invalidateQueries({ queryKey: ['spider', id] });
     },
     onError: (err) => toast.error(`保存失败：${String(err)}`),
   });
@@ -109,7 +110,7 @@ export default function SpiderDetailPage({ params }: { params: Promise<{ name: s
   const onResetVisited = () => {
     if (
       window.confirm(
-        `确定要清空 spider "${name}" 的所有 visited 记录吗？\n\n清空后，下次运行会重新抓取所有曾抓过的 URL（包括看似"已完成"的种子页）。\n\n仅在你怀疑 visited 表把 URL 锁住、导致后续 run 空跑时使用。`,
+        `确定要清空 spider "${spider?.name ?? id}" 的所有 visited 记录吗？\n\n清空后，下次运行会重新抓取所有曾抓过的 URL（包括看似"已完成"的种子页）。\n\n仅在你怀疑 visited 表把 URL 锁住、导致后续 run 空跑时使用。`,
       )
     ) {
       resetVisitedMutation.mutate();
@@ -117,35 +118,36 @@ export default function SpiderDetailPage({ params }: { params: Promise<{ name: s
   };
 
   const { data: runsResult } = useQuery({
-    queryKey: ['runs', 'spider', name],
+    queryKey: ['runs', 'spider', id],
     queryFn: () =>
-      api.get<ListResult<Run>>(`/api/runs?spider=${encodeURIComponent(name)}&pageSize=10`),
+      api.get<ListResult<Run>>(`/api/runs?spiderId=${encodeURIComponent(id)}&pageSize=10`),
     refetchInterval: 10_000,
   });
 
   const { data: allRunsResult } = useQuery({
-    queryKey: ['runs', 'spider', name, 'all'],
+    queryKey: ['runs', 'spider', id, 'all'],
     queryFn: () =>
-      api.get<ListResult<Run>>(`/api/runs?spider=${encodeURIComponent(name)}&pageSize=1000`),
+      api.get<ListResult<Run>>(`/api/runs?spiderId=${encodeURIComponent(id)}&pageSize=1000`),
   });
 
   const { data: itemsResult } = useQuery({
-    queryKey: ['items', 'spider', name, 'count'],
+    queryKey: ['items', 'spider', id, 'count'],
     queryFn: () =>
-      api.get<ListResult<unknown>>(`/api/items?spider=${encodeURIComponent(name)}&pageSize=1`),
+      api.get<ListResult<unknown>>(
+        `/api/items?spider=${encodeURIComponent(spider?.type ?? '')}&pageSize=1`,
+      ),
+    enabled: !!spider,
   });
 
   if (isLoading) return <div>加载中…</div>;
-  if (!spider) return <div>未找到 Spider：{name}</div>;
+  if (!spider) return <div>未找到 Spider：{id}</div>;
 
-  // ── 聚合统计 ──────────────────────────────────────────────────────────────
   const allRuns = allRunsResult?.data ?? [];
   const totalRuns = allRunsResult?.total ?? 0;
   const completedRuns = allRuns.filter((r) => r.status === 'completed').length;
   const successRate = totalRuns > 0 ? Math.round((completedRuns / totalRuns) * 100) : null;
   const totalItems = itemsResult?.total ?? 0;
   const totalNewItems = allRuns.reduce((s, r) => s + (r.newItems ?? 0), 0);
-
   const recentRuns = runsResult?.data ?? [];
 
   return (
@@ -153,11 +155,8 @@ export default function SpiderDetailPage({ params }: { params: Promise<{ name: s
       {/* ── 标题栏 ── */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">{spider.displayName}</h1>
-          <p className="font-mono text-sm text-muted-foreground">{spider.name}</p>
-          {spider.spiderType && spider.spiderType !== spider.name && (
-            <p className="text-xs text-muted-foreground">类型：{spider.spiderType}</p>
-          )}
+          <h1 className="text-xl font-semibold">{spider.name}</h1>
+          <p className="font-mono text-sm text-muted-foreground">{spider.type}</p>
         </div>
         <div className="flex gap-2">
           <Button
@@ -206,7 +205,7 @@ export default function SpiderDetailPage({ params }: { params: Promise<{ name: s
           <CardTitle className="flex items-center justify-between text-base">
             近期运行
             <Link
-              href={`/runs?spider=${encodeURIComponent(name)}`}
+              href={`/runs?spiderId=${encodeURIComponent(id)}`}
               className="text-xs font-normal text-muted-foreground hover:underline"
             >
               查看全部 →
