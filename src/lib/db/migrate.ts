@@ -138,6 +138,9 @@ END $$`,
    WHERE "spider" = 'nextjs-blog'
      AND "platform" IS NULL`,
 
+  // ── Phase A：Spider defaultParams 列 ────────────────────────────
+  `ALTER TABLE "spiders" ADD COLUMN IF NOT EXISTS "default_params" jsonb NOT NULL DEFAULT '{}'`,
+
   // ── Phase 6：accounts 表（凭据管理）──────────────────────────────
 
   `DO $$ BEGIN

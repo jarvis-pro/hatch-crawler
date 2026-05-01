@@ -36,9 +36,10 @@ export { RunStatus, EventLevel } from '@prisma/client';
  * Prisma 把 jsonb 列推断成 `JsonValue`；这里把已知形状的 jsonb 收紧成业务类型，
  * 让 repository / 调用方少写一道 cast。写入时这些字段会被 Prisma 接受为 InputJson。
  */
-export type Spider = Omit<PrismaSpider, 'startUrls' | 'allowedHosts'> & {
+export type Spider = Omit<PrismaSpider, 'startUrls' | 'allowedHosts' | 'defaultParams'> & {
   startUrls: string[];
   allowedHosts: string[];
+  defaultParams: Record<string, unknown>;
 };
 
 export type Run = Omit<PrismaRun, 'overrides'> & {
@@ -72,6 +73,7 @@ export type NewSpider = {
   perHostIntervalMs?: number;
   enabled?: boolean;
   cronSchedule?: string | null;
+  defaultParams?: Record<string, unknown>;
 };
 
 export type NewRun = {

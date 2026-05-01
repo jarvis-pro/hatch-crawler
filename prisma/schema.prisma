@@ -54,6 +54,8 @@ model Spider {
   // Phase 5：多平台标记
   platform          String?  @db.VarChar(32)
   emitsKinds        Json     @default("[]") @map("emits_kinds")
+  // Phase A：Spider 运行时参数默认值（channelId / query 等）
+  defaultParams     Json     @default("{}") @map("default_params")
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt         DateTime @default(now()) @map("updated_at") @db.Timestamp(6)
 

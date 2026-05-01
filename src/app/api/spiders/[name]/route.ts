@@ -7,13 +7,16 @@ import { fail, failInternal, failValidation, ok } from '@/lib/api/response';
 const updateSchema = z.object({
   displayName: z.string().min(1).max(128),
   description: z.string().nullish(),
-  startUrls: z.array(z.string().url()).min(1),
+  // API-based spider（YouTube 等）动态构造 startUrls，DB 里允许存空数组
+  startUrls: z.array(z.string()).default([]),
   allowedHosts: z.array(z.string()).default([]),
-  maxDepth: z.number().int().min(0).max(10).default(2),
+  maxDepth: z.number().int().min(0).max(100).default(2),
   concurrency: z.number().int().min(1).max(64).default(4),
   perHostIntervalMs: z.number().int().min(0).max(60000).default(500),
   enabled: z.boolean().default(true),
   cronSchedule: z.string().nullish(),
+  // Spider 运行时参数默认值（channelId / query 等）
+  defaultParams: z.record(z.unknown()).default({}),
 });
 
 interface RouteContext {
