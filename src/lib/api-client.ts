@@ -51,6 +51,14 @@ export const api = {
     });
     return parse<T>(res);
   },
+  async patch<T>(url: string, body?: unknown): Promise<T> {
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    return parse<T>(res);
+  },
   async delete<T>(url: string, body?: unknown): Promise<T> {
     const res = await fetch(url, {
       method: 'DELETE',

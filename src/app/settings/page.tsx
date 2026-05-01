@@ -129,6 +129,16 @@ function AccountsTab() {
     onError: (err) => toast.error(String(err)),
   });
 
+  const unban = useMutation({
+    mutationFn: (id: number) =>
+      api.patch<{ unbanned: boolean }>(`/api/accounts/${id}`, { action: 'unban' }),
+    onSuccess: () => {
+      toast.success('已恢复为 active，失败计数已清零');
+      void qc.invalidateQueries({ queryKey: ['accounts'] });
+    },
+    onError: (err) => toast.error(String(err)),
+  });
+
   const testAccount = useMutation({
     mutationFn: (id: number) =>
       api.post<{ valid: boolean; message: string }>(`/api/accounts/${id}/test`, {}),
@@ -217,7 +227,18 @@ function AccountsTab() {
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      {acc.kind === 'apikey' && (
+                      {acc.status === 'banned' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={unban.isPending}
+                          onClick={() => unban.mutate(acc.id)}
+                          className="text-green-700 hover:text-green-800"
+                        >
+                          恢复
+                        </Button>
+                      )}
+                      {acc.kind === 'apikey' && acc.status !== 'banned' && (
                         <Button
                           size="sm"
                           variant="outline"

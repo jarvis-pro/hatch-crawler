@@ -262,6 +262,15 @@ export async function incrementQuota(db: Db, id: number, cost: number): Promise<
   });
 }
 
+/** 将账号恢复为 active，重置失败计数（用于手动解封被 ban 的账号） */
+export async function resetStatus(db: Db, id: number): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (db as any).account.update({
+    where: { id },
+    data: { status: 'active', failureCount: 0, updatedAt: new Date() },
+  });
+}
+
 /** 记录一次失败；failureCount >= threshold 时自动 ban */
 export async function recordFailure(db: Db, id: number, banThreshold = 5): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
