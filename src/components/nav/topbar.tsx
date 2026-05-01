@@ -2,14 +2,15 @@
 import { usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
+import { ThemeToggle } from '@/components/nav/theme-toggle';
 
 const titleMap: Record<string, string> = {
-  '/dashboard': 'Dashboard',
-  '/spiders': 'Spiders',
-  '/runs': 'Runs',
-  '/items': 'Items',
-  '/attachments': 'Attachments',
-  '/settings': 'Settings',
+  '/dashboard': '仪表盘',
+  '/spiders': '爬虫',
+  '/runs': '任务',
+  '/items': '数据',
+  '/attachments': '附件',
+  '/settings': '设置',
 };
 
 export function Topbar() {
@@ -30,11 +31,14 @@ export function Topbar() {
   return (
     <header className="flex h-14 items-center justify-between border-b bg-background px-6">
       <h1 className="text-base font-semibold">{title}</h1>
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span
-          className={`inline-block h-2 w-2 rounded-full ${healthy ? 'bg-green-500' : 'bg-red-500'}`}
-        />
-        {healthy ? 'DB connected' : 'DB unreachable'}
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span
+            className={`inline-block h-2 w-2 rounded-full ${healthy ? 'bg-green-500' : 'bg-red-500'}`}
+          />
+          {healthy ? '数据库已连接' : '数据库不可用'}
+        </div>
+        <ThemeToggle />
       </div>
     </header>
   );
