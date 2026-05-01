@@ -231,7 +231,6 @@ const SPIDER_PARAM_SCHEMAS: Record<string, ParamField[]> = {
 
 /** 根据注册名推荐显示名 */
 const SPIDER_DISPLAY_NAMES: Record<string, string> = {
-  'nextjs-blog': 'Next.js Blog',
   'youtube-channel-videos': 'YouTube 频道视频',
   'youtube-search': 'YouTube 搜索',
   'bilibili-user-videos': 'Bilibili UP 主投稿',
@@ -864,7 +863,7 @@ export default function SpidersPage() {
                       {s.name}
                     </Link>
                     <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">
-                      {s.type} · {s.id.slice(0, 8)}
+                      {s.id.slice(0, 8)} · {s.type}
                     </div>
                   </TableCell>
                   <TableCell>

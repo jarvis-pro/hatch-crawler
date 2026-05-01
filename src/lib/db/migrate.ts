@@ -129,15 +129,6 @@ END $$`,
   `ALTER TABLE "spiders" ADD COLUMN IF NOT EXISTS "platform" varchar(32)`,
   `ALTER TABLE "spiders" ADD COLUMN IF NOT EXISTS "emits_kinds" jsonb NOT NULL DEFAULT '[]'::jsonb`,
 
-  // 一次性 backfill：把存量 nextjs-blog 条目标注 platform / kind / source_id
-  // WHERE platform IS NULL 保证幂等（只跑一次）
-  `UPDATE "items"
-   SET "platform"  = 'nextjs-blog',
-       "kind"      = 'article',
-       "source_id" = "url"
-   WHERE "spider" = 'nextjs-blog'
-     AND "platform" IS NULL`,
-
   // ── Phase A：Spider defaultParams 列 ────────────────────────────
   `ALTER TABLE "spiders" ADD COLUMN IF NOT EXISTS "default_params" jsonb NOT NULL DEFAULT '{}'`,
 

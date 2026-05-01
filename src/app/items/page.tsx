@@ -266,7 +266,7 @@ export default function ItemsPage() {
   }
 
   // platform / kind 选项从当前页数据推断（静态已知平台兜底）
-  const knownPlatforms = ['youtube', 'bilibili', 'xhs', 'weibo', 'douyin', 'nextjs-blog'];
+  const knownPlatforms = ['youtube', 'bilibili', 'xhs', 'weibo', 'douyin'];
   const knownKinds = Object.keys(KIND_LABELS);
 
   return (

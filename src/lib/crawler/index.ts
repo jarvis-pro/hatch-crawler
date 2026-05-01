@@ -32,9 +32,6 @@ export { JsonlWriter } from './storage/file-storage';
 export { urlFingerprint, getHost, resolveUrl } from './utils/url';
 export { logger, type Logger } from './utils/logger';
 
-// 内置示例 Spider
-export { NextJsBlogSpider } from './spiders/nextjs-blog-spider';
-
 // 默认配置
 export {
   defaultCrawlerConfig,

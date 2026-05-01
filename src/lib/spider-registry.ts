@@ -1,5 +1,5 @@
 import 'server-only';
-import { BaseSpider, NextJsBlogSpider } from '@/lib/crawler';
+import { BaseSpider } from '@/lib/crawler';
 import { YoutubeChannelVideosSpider } from '@/lib/crawler/platforms/youtube/spiders/channel-videos';
 import { YoutubeSearchSpider } from '@/lib/crawler/platforms/youtube/spiders/search';
 import { BilibiliUserVideosSpider } from '@/lib/crawler/platforms/bilibili/spiders/user-videos';
@@ -34,9 +34,6 @@ interface SpiderEntry {
 }
 
 export const SPIDER_REGISTRY: Record<string, SpiderEntry> = {
-  'nextjs-blog': {
-    factory: () => new NextJsBlogSpider(),
-  },
   'youtube-channel-videos': {
     factory: (params) => new YoutubeChannelVideosSpider(params),
     platform: 'youtube',
