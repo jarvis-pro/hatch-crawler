@@ -27,6 +27,10 @@ interface AccountRow {
   status: string;
   lastUsedAt: string | null;
   failureCount: number;
+  // Phase D
+  lastTestedAt: string | null;
+  lastTestOk: boolean | null;
+  quotaUsedToday: number;
   createdAt: string;
 }
 
@@ -64,6 +68,39 @@ export default function SettingsPage() {
   );
 }
 
+// ── HealthBadge ───────────────────────────────────────────────────────────────
+
+function HealthBadge({ ok, testedAt }: { ok: boolean | null; testedAt: string | null }) {
+  if (testedAt === null || ok === null) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+        <span>—</span>
+        <span>未测试</span>
+      </span>
+    );
+  }
+  if (ok) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800"
+        title={`最后测试：${new Date(testedAt).toLocaleString()}`}
+      >
+        <span>✓</span>
+        <span>正常</span>
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800"
+      title={`最后测试：${new Date(testedAt).toLocaleString()}`}
+    >
+      <span>✗</span>
+      <span>失效</span>
+    </span>
+  );
+}
+
 // ── Accounts Tab ──────────────────────────────────────────────────────────────
 
 function AccountsTab() {
@@ -90,6 +127,7 @@ function AccountsTab() {
     onSuccess: (data) => {
       if (data.valid) toast.success(data.message);
       else toast.error(`验证失败：${data.message}`);
+      void qc.invalidateQueries({ queryKey: ['accounts'] });
     },
     onError: (err) => toast.error(String(err)),
   });
@@ -123,6 +161,8 @@ function AccountsTab() {
                 <TableHead>标签</TableHead>
                 <TableHead>类型</TableHead>
                 <TableHead>状态</TableHead>
+                <TableHead>健康</TableHead>
+                <TableHead>今日配额</TableHead>
                 <TableHead>失败次数</TableHead>
                 <TableHead>最近使用</TableHead>
                 <TableHead></TableHead>
@@ -131,14 +171,14 @@ function AccountsTab() {
             <TableBody>
               {isLoading && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground">
+                  <TableCell colSpan={9} className="text-center text-muted-foreground">
                     加载中…
                   </TableCell>
                 </TableRow>
               )}
               {accounts.length === 0 && !isLoading && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground">
+                  <TableCell colSpan={9} className="text-center text-muted-foreground">
                     暂无凭据，点击"新增凭据"添加。
                   </TableCell>
                 </TableRow>
@@ -157,13 +197,19 @@ function AccountsTab() {
                       {acc.status}
                     </span>
                   </TableCell>
+                  <TableCell>
+                    <HealthBadge ok={acc.lastTestOk} testedAt={acc.lastTestedAt} />
+                  </TableCell>
+                  <TableCell className="text-xs tabular-nums">
+                    {acc.kind === 'apikey' ? acc.quotaUsedToday.toLocaleString() : '—'}
+                  </TableCell>
                   <TableCell className="text-xs">{acc.failureCount}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {acc.lastUsedAt ? new Date(acc.lastUsedAt).toLocaleString() : '—'}
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      {acc.platform === 'youtube' && acc.kind === 'apikey' && (
+                      {acc.kind === 'apikey' && (
                         <Button
                           size="sm"
                           variant="outline"
