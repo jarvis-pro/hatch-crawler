@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import type { Run, Spider } from '@/lib/db';
 import { api } from '@/lib/api-client';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table,
@@ -15,6 +16,31 @@ import {
 } from '@/components/ui/table';
 import { RunStatusBadge } from '@/components/runs/run-status-badge';
 import { StatsCard } from '@/components/stats/stats-card';
+
+/** 导出 Spider 配置为 JSON 文件 */
+function exportSpiderConfig(spider: Spider) {
+  const config = {
+    name: spider.name,
+    displayName: spider.displayName,
+    description: spider.description,
+    platform: spider.platform,
+    startUrls: spider.startUrls,
+    allowedHosts: spider.allowedHosts,
+    maxDepth: spider.maxDepth,
+    concurrency: spider.concurrency,
+    perHostIntervalMs: spider.perHostIntervalMs,
+    enabled: spider.enabled,
+    cronSchedule: spider.cronSchedule,
+    defaultParams: spider.defaultParams,
+  };
+  const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `spider-${spider.name}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 interface ListResult<T> {
   data: T[];
@@ -74,9 +100,14 @@ export default function SpiderDetailPage({ params }: { params: Promise<{ name: s
   return (
     <div className="space-y-6">
       {/* ── 标题栏 ── */}
-      <div>
-        <h1 className="text-xl font-semibold">{spider.displayName}</h1>
-        <p className="font-mono text-sm text-muted-foreground">{spider.name}</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold">{spider.displayName}</h1>
+          <p className="font-mono text-sm text-muted-foreground">{spider.name}</p>
+        </div>
+        <Button size="sm" variant="outline" onClick={() => exportSpiderConfig(spider)}>
+          导出配置
+        </Button>
       </div>
 
       {/* ── 统计卡片 ── */}
