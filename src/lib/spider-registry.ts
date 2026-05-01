@@ -2,6 +2,8 @@ import 'server-only';
 import { BaseSpider, NextJsBlogSpider } from '@/lib/crawler';
 import { YoutubeChannelVideosSpider } from '@/lib/crawler/platforms/youtube/spiders/channel-videos';
 import { YoutubeSearchSpider } from '@/lib/crawler/platforms/youtube/spiders/search';
+import { BilibiliUserVideosSpider } from '@/lib/crawler/platforms/bilibili/spiders/user-videos';
+import { BilibiliSearchSpider } from '@/lib/crawler/platforms/bilibili/spiders/search';
 
 /**
  * Spider 注册表：name → 入口描述。
@@ -33,6 +35,14 @@ export const SPIDER_REGISTRY: Record<string, SpiderEntry> = {
   'youtube-search': {
     factory: (params) => new YoutubeSearchSpider(params),
     platform: 'youtube',
+  },
+  'bilibili-user-videos': {
+    factory: (params) => new BilibiliUserVideosSpider(params),
+    platform: 'bilibili',
+  },
+  'bilibili-search': {
+    factory: (params) => new BilibiliSearchSpider(params),
+    platform: 'bilibili',
   },
 };
 

@@ -83,6 +83,41 @@ const SPIDER_PARAM_SCHEMAS: Record<string, ParamField[]> = {
     },
     { key: 'maxResults', label: '每页结果数', type: 'number', defaultValue: 50 },
   ],
+  'bilibili-user-videos': [
+    {
+      key: 'uid',
+      label: 'UP 主 UID',
+      required: true,
+      placeholder: '12345678',
+      hint: '在 UP 主空间页 URL 中找到，例如 space.bilibili.com/12345678',
+    },
+    { key: 'maxPages', label: '最多翻页数', type: 'number', defaultValue: 10 },
+    {
+      key: 'order',
+      label: '排序方式',
+      type: 'select',
+      options: ['pubdate', 'click', 'stow'],
+      defaultValue: 'pubdate',
+    },
+    { key: 'pageSize', label: '每页结果数', type: 'number', defaultValue: 30 },
+  ],
+  'bilibili-search': [
+    {
+      key: 'query',
+      label: '搜索关键词',
+      required: true,
+      placeholder: 'TypeScript 教程',
+    },
+    { key: 'maxPages', label: '最多翻页数', type: 'number', defaultValue: 5 },
+    {
+      key: 'order',
+      label: '排序方式',
+      type: 'select',
+      options: ['totalrank', 'click', 'pubdate', 'dm', 'stow'],
+      defaultValue: 'totalrank',
+    },
+    { key: 'pageSize', label: '每页结果数', type: 'number', defaultValue: 30 },
+  ],
 };
 
 /** 根据注册名推荐显示名 */
@@ -90,10 +125,13 @@ const SPIDER_DISPLAY_NAMES: Record<string, string> = {
   'nextjs-blog': 'Next.js Blog',
   'youtube-channel-videos': 'YouTube 频道视频',
   'youtube-search': 'YouTube 搜索',
+  'bilibili-user-videos': 'Bilibili UP 主投稿',
+  'bilibili-search': 'Bilibili 搜索',
 };
 
 const PLATFORM_BADGE: Record<string, string> = {
   youtube: 'bg-red-100 text-red-800',
+  bilibili: 'bg-blue-100 text-blue-800',
 };
 
 // ── JSON fallback editor ──────────────────────────────────────────────────────
