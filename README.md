@@ -1,7 +1,7 @@
 # hatch-crawler
 
 一个用 Node.js + TypeScript 写的、面向 **Next.js 站点**优化的全功能爬虫。
-当前为 v1：单仓 Next.js 全栈应用，浏览器看板 + API + SSE + 进程内 pg-boss worker 一体化部署。
+单仓 Next.js 全栈应用，浏览器看板 + API + SSE + 进程内 pg-boss worker 一体化部署。
 
 ## 为什么针对 Next.js？
 
@@ -17,13 +17,19 @@
 
 ```
 hatch-crawler/
-├── docs/                          设计与运维文档
-│   ├── architecture.md            架构总览、服务拓扑
-│   ├── data-model.md              Postgres schema
-│   ├── api-spec.md                REST + SSE 契约
-│   ├── dashboard-spec.md          看板页面线框
-│   ├── roadmap.md                 阶段拆解 / 当前进度
-│   └── deployment.md              Docker Compose 一键起 + 排错
+├── docs/                          设计与运维文档（按读者目的分类）
+│   ├── README.md                  顶层导航
+│   ├── getting-started/           入门：架构总览 + 实施路线
+│   │   ├── architecture.md
+│   │   └── roadmap.md
+│   ├── reference/                 契约：schema / API / 看板线框
+│   │   ├── data-model.md
+│   │   ├── api-spec.md
+│   │   └── dashboard-spec.md
+│   ├── deploy/                    部署形态
+│   │   └── deployment.md
+│   └── rfcs/                      重大架构决策提案
+│       └── 0001-multi-platform.md
 ├── scripts/                       开发期脚本
 │   ├── db-migrate.ts              手动跑迁移（生产时由 instrumentation 自动跑）
 │   ├── db-seed.ts                 灌入示例 Spider + 默认 settings
@@ -42,7 +48,7 @@ hatch-crawler/
 │   │   └── stats/stats-card.tsx
 │   ├── lib/
 │   │   ├── crawler/               爬虫核心引擎（core / middleware / parsers / spiders / storage / utils）
-│   │   ├── db/                    Drizzle + Postgres + pg-boss（schema / client / boss / migrate / repositories）
+│   │   ├── db/                    Prisma + Postgres + pg-boss（client / boss / migrate / repositories）
 │   │   ├── worker/                进程内 pg-boss worker（job-handler / postgres-storage / event-bus）
 │   │   ├── shared/                跨模块共享类型（CrawlerEvent 等）
 │   │   ├── api/response.ts        统一响应包装
@@ -52,7 +58,7 @@ hatch-crawler/
 │   │   ├── env.ts                 环境变量校验
 │   │   └── utils.ts
 │   └── instrumentation.ts         Next.js 进程启动钩子：跑迁移 + 启动 worker
-├── drizzle.config.ts              drizzle-kit（generate / studio）配置
+├── prisma/schema.prisma           Prisma 权威 schema
 ├── next.config.mjs / tailwind.config.ts / postcss.config.mjs
 ├── Dockerfile                     单阶段多步构建 web 镜像
 ├── docker-compose.yml             postgres + web 两个服务
@@ -60,7 +66,7 @@ hatch-crawler/
 └── package.json                   单 package（不再是 monorepo）
 ```
 
-> v0 的 CLI 形态、以及早期方案里 `packages/*` + `apps/web` 的 monorepo 结构都已合并为
+> 早期的 CLI 形态、以及早期方案里 `packages/*` + `apps/web` 的 monorepo 结构都已合并为
 > 单一 Next.js 项目；引擎自测仍可通过 `pnpm smoke` 在内存 Storage 下跑示例 Spider。
 
 ## 快速开始
@@ -102,20 +108,20 @@ pnpm check    # typecheck + lint + format:check
 
 ## 命令一览
 
-| 命令                                | 作用                                             |
-| ----------------------------------- | ------------------------------------------------ |
-| `pnpm dev`                          | 启动 Next.js 看板（开发模式，HMR + Turbopack）   |
-| `pnpm build`                        | 生产构建（Next.js standalone）                   |
-| `pnpm start`                        | 启动 Next.js 生产模式（先 `pnpm build`）         |
-| `pnpm db:migrate`                   | 手动跑迁移（web 启动时也会自动跑）               |
-| `pnpm db:seed`                      | 灌入示例 Spider + 默认 settings                  |
-| `pnpm db:generate`                  | drizzle-kit 生成迁移 SQL（可选，当前用内联 SQL） |
-| `pnpm db:studio`                    | drizzle-kit Studio 浏览数据                      |
-| `pnpm smoke`                        | 引擎烟雾测试（内存 Storage，不依赖 DB）          |
-| `pnpm typecheck`                    | 全量类型检查                                     |
-| `pnpm lint` / `pnpm lint:fix`       | ESLint                                           |
-| `pnpm format` / `pnpm format:check` | Prettier                                         |
-| `pnpm check`                        | 三连：typecheck + lint + format:check            |
+| 命令                                | 作用                                           |
+| ----------------------------------- | ---------------------------------------------- |
+| `pnpm dev`                          | 启动 Next.js 看板（开发模式，HMR + Turbopack） |
+| `pnpm build`                        | 生产构建（Next.js standalone）                 |
+| `pnpm start`                        | 启动 Next.js 生产模式（先 `pnpm build`）       |
+| `pnpm db:migrate`                   | 手动跑迁移（web 启动时也会自动跑）             |
+| `pnpm db:seed`                      | 灌入示例 Spider + 默认 settings                |
+| `pnpm db:generate`                  | `prisma generate` 刷新生成的 client 类型       |
+| `pnpm db:studio`                    | `prisma studio` 浏览数据                       |
+| `pnpm smoke`                        | 引擎烟雾测试（内存 Storage，不依赖 DB）        |
+| `pnpm typecheck`                    | 全量类型检查                                   |
+| `pnpm lint` / `pnpm lint:fix`       | ESLint                                         |
+| `pnpm format` / `pnpm format:check` | Prettier                                       |
+| `pnpm check`                        | 三连：typecheck + lint + format:check          |
 
 ## 工程化基建
 
@@ -143,13 +149,13 @@ pnpm check    # typecheck + lint + format:check
 新建 `src/lib/crawler/spiders/my-spider.ts`：
 
 ```ts
-import { BaseSpider, type SpiderContext } from "../core/spider";
-import { extractNextData } from "../parsers/next-data-parser";
+import { BaseSpider, type SpiderContext } from '../core/spider';
+import { extractNextData } from '../parsers/next-data-parser';
 
 export class MySpider extends BaseSpider {
-  override readonly name = "my-site";
+  override readonly name = 'my-site';
   override readonly maxDepth = 3;
-  override readonly startUrls = [{ url: "https://example.com", type: "index" }];
+  override readonly startUrls = [{ url: 'https://example.com', type: 'index' }];
 
   override async parse(ctx: SpiderContext): Promise<void> {
     const data = extractNextData(ctx.response.body);
@@ -160,7 +166,7 @@ export class MySpider extends BaseSpider {
       payload: { props: data?.props?.pageProps },
     });
 
-    ctx.enqueue({ url: "https://example.com/other", type: "detail" });
+    ctx.enqueue({ url: 'https://example.com/other', type: 'detail' });
   }
 }
 ```
@@ -205,18 +211,18 @@ UA 池在 `src/lib/crawler/middleware/ua-pool.ts` 里维护，按需追加；运
 
 ## 全栈版本
 
-完整看板的实现路线在 `docs/roadmap.md` 中描述：
+完整看板的实现路线在 `docs/getting-started/roadmap.md` 中描述：
 
 1. **Phase 1** — 抽离引擎模块、确立 `src/lib/crawler` 边界 ✅
-2. **Phase 2** — `src/lib/db`（Drizzle + Postgres + pg-boss）✅
+2. **Phase 2** — `src/lib/db`（Prisma + Postgres + pg-boss）✅
 3. **Phase 3** — `src/app` 看板 + API + SSE + `src/lib/worker` ✅
 4. **Phase 4** — Docker Compose 一键起 ✅
 
-每个 Phase 完成都能独立验证；当前 v1 已全部交付。
+每个 Phase 完成都能独立验证；Phase 1-4 已全部交付。
 
 ## 后续扩展方向
 
 - **JS 渲染兜底**：对没有 `__NEXT_DATA__` 的 SPA 站点，集成 Playwright 作为 Fetcher 的另一个实现
 - **结构化 schema**：在 `emit` 时用 Zod 校验 payload
 - **监控**：对接 OpenTelemetry / Prometheus
-- **认证**：NextAuth + Postgres adapter（v2）
+- **认证**：NextAuth + Postgres adapter（下一阶段）
