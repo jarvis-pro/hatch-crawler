@@ -32,6 +32,7 @@ const KIND_LABELS: Record<string, string> = {
   audio: '音频',
   image: '图片',
   post: '短帖',
+  comment: '评论',
 };
 
 const KIND_COLORS: Record<string, string> = {
@@ -40,6 +41,7 @@ const KIND_COLORS: Record<string, string> = {
   audio: 'bg-green-100 text-green-800',
   image: 'bg-yellow-100 text-yellow-800',
   post: 'bg-orange-100 text-orange-800',
+  comment: 'bg-pink-100 text-pink-800',
 };
 
 // ── 导出工具 ──────────────────────────────────────────────────────────────────

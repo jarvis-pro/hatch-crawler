@@ -163,6 +163,16 @@ const SPIDER_PARAM_SCHEMAS: Record<string, ParamField[]> = {
     },
     { key: 'delayMs', label: '请求间隔（ms）', type: 'number', defaultValue: 2000 },
   ],
+  'xhs-note-comments': [
+    {
+      key: 'noteId',
+      label: '笔记 ID',
+      required: true,
+      placeholder: 'abc123def456...',
+      hint: '笔记页 URL /explore/{noteId} 中的 ID',
+    },
+    { key: 'maxPages', label: '最多翻页数', type: 'number', defaultValue: 20 },
+  ],
 };
 
 /** 根据注册名推荐显示名 */
@@ -175,6 +185,7 @@ const SPIDER_DISPLAY_NAMES: Record<string, string> = {
   'xhs-search': '小红书搜索',
   'xhs-user-notes': '小红书用户笔记',
   'xhs-note-detail': '小红书笔记详情',
+  'xhs-note-comments': '小红书笔记评论',
 };
 
 const PLATFORM_BADGE: Record<string, string> = {
