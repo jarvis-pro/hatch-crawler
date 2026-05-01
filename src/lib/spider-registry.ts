@@ -6,6 +6,7 @@ import { BilibiliUserVideosSpider } from '@/lib/crawler/platforms/bilibili/spide
 import { BilibiliSearchSpider } from '@/lib/crawler/platforms/bilibili/spiders/search';
 import { XhsSearchSpider } from '@/lib/crawler/platforms/xhs/spiders/search';
 import { XhsUserNotesSpider } from '@/lib/crawler/platforms/xhs/spiders/user-notes';
+import { XhsNoteDetailSpider } from '@/lib/crawler/platforms/xhs/spiders/note-detail';
 
 /**
  * Spider 注册表：name → 入口描述。
@@ -52,6 +53,10 @@ export const SPIDER_REGISTRY: Record<string, SpiderEntry> = {
   },
   'xhs-user-notes': {
     factory: (params) => new XhsUserNotesSpider(params),
+    platform: 'xhs',
+  },
+  'xhs-note-detail': {
+    factory: (params) => new XhsNoteDetailSpider(params),
     platform: 'xhs',
   },
 };

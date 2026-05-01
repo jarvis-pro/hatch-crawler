@@ -153,6 +153,16 @@ const SPIDER_PARAM_SCHEMAS: Record<string, ParamField[]> = {
     },
     { key: 'maxPages', label: '最多翻页数', type: 'number', defaultValue: 10 },
   ],
+  'xhs-note-detail': [
+    {
+      key: 'noteIds',
+      label: '笔记 ID 列表',
+      required: true,
+      placeholder: 'abc123, def456',
+      hint: '多个 ID 用英文逗号分隔，或填写 JSON 数组。笔记 ID 在笔记页 URL /explore/{noteId} 中',
+    },
+    { key: 'delayMs', label: '请求间隔（ms）', type: 'number', defaultValue: 2000 },
+  ],
 };
 
 /** 根据注册名推荐显示名 */
@@ -164,6 +174,7 @@ const SPIDER_DISPLAY_NAMES: Record<string, string> = {
   'bilibili-search': 'Bilibili 搜索',
   'xhs-search': '小红书搜索',
   'xhs-user-notes': '小红书用户笔记',
+  'xhs-note-detail': '小红书笔记详情',
 };
 
 const PLATFORM_BADGE: Record<string, string> = {
