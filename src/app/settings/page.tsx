@@ -49,6 +49,7 @@ export default function SettingsPage() {
       <TabsList>
         <TabsTrigger value="accounts">凭据管理</TabsTrigger>
         <TabsTrigger value="proxy">代理池</TabsTrigger>
+        <TabsTrigger value="webhook">通知</TabsTrigger>
         <TabsTrigger value="ua">UA 池</TabsTrigger>
         <TabsTrigger value="defaults">默认参数</TabsTrigger>
       </TabsList>
@@ -56,7 +57,10 @@ export default function SettingsPage() {
         <AccountsTab />
       </TabsContent>
       <TabsContent value="proxy">
-        <SettingEditor settingKey="proxy_pool" />
+        <ProxyTab />
+      </TabsContent>
+      <TabsContent value="webhook">
+        <WebhookTab />
       </TabsContent>
       <TabsContent value="ua">
         <SettingEditor settingKey="ua_pool" />
@@ -318,6 +322,135 @@ function AddAccountForm({ onSuccess }: { onSuccess: () => void }) {
         <div className="flex justify-end gap-2">
           <Button disabled={create.isPending || !label || !payload} onClick={() => create.mutate()}>
             {create.isPending ? '保存中…' : '保存'}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── 代理池 Tab ────────────────────────────────────────────────────────────────
+
+function ProxyTab() {
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['setting', 'proxy_pool'],
+    queryFn: () => api.get<{ key: string; value: unknown }>('/api/settings/proxy_pool'),
+  });
+
+  const [text, setText] = useState<string>('');
+
+  // 从 settings 初始化：value 是字符串数组，每行一个 URL
+  if (data && !text) {
+    const list = Array.isArray(data.value) ? (data.value as string[]) : [];
+    setText(list.join('\n'));
+  }
+
+  const save = useMutation({
+    mutationFn: (lines: string[]) => api.put('/api/settings/proxy_pool', { value: lines }),
+    onSuccess: () => {
+      toast.success('代理池已保存');
+      void qc.invalidateQueries({ queryKey: ['setting', 'proxy_pool'] });
+    },
+    onError: (err) => toast.error(String(err)),
+  });
+
+  const lines = text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>代理池</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          每行填写一个代理地址，格式：
+          <code className="rounded bg-muted px-1">http://user:pass@host:port</code>
+          。保存后每次 Spider 运行时自动 round-robin 轮换。留空则直连。
+        </p>
+        <textarea
+          className="h-48 w-full rounded-md border bg-background p-3 font-mono text-xs"
+          placeholder={'http://proxy1:8080\nhttp://user:pass@proxy2:3128'}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-muted-foreground">
+            {lines.length > 0 ? `${lines.length} 条代理` : '暂无代理（直连）'}
+          </span>
+          <Button disabled={save.isPending} onClick={() => save.mutate(lines)}>
+            {save.isPending ? '保存中…' : '保存'}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Webhook 通知 Tab ──────────────────────────────────────────────────────────
+
+function WebhookTab() {
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['setting', 'webhook_url'],
+    queryFn: () => api.get<{ key: string; value: unknown }>('/api/settings/webhook_url'),
+  });
+
+  const [url, setUrl] = useState('');
+
+  if (data && !url && typeof data.value === 'string' && data.value) {
+    setUrl(data.value);
+  }
+
+  const save = useMutation({
+    mutationFn: (webhookUrl: string) =>
+      api.put('/api/settings/webhook_url', { value: webhookUrl || null }),
+    onSuccess: () => {
+      toast.success(url ? 'Webhook 已保存' : 'Webhook 已清除');
+      void qc.invalidateQueries({ queryKey: ['setting', 'webhook_url'] });
+    },
+    onError: (err) => toast.error(String(err)),
+  });
+
+  const testWebhook = useMutation({
+    mutationFn: () => api.post('/api/settings/webhook_test', {}),
+    onSuccess: () => toast.success('测试通知已发送'),
+    onError: (err) => toast.error(`发送失败：${String(err)}`),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>完成通知</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          每次 Spider 运行完成或失败时，向此 URL 发送 POST 请求（JSON payload）。
+          支持钉钉机器人、Slack Incoming Webhook、飞书机器人等。
+        </p>
+        <div className="space-y-1">
+          <label className="text-sm font-medium">Webhook URL</label>
+          <Input
+            placeholder="https://hooks.slack.com/services/..."
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+          />
+        </div>
+        <div className="flex justify-end gap-2">
+          {url && (
+            <Button
+              variant="outline"
+              disabled={testWebhook.isPending}
+              onClick={() => testWebhook.mutate()}
+            >
+              {testWebhook.isPending ? '发送中…' : '发送测试'}
+            </Button>
+          )}
+          <Button disabled={save.isPending} onClick={() => save.mutate(url)}>
+            {save.isPending ? '保存中…' : '保存'}
           </Button>
         </div>
       </CardContent>
