@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { Item } from '@/lib/db';
 import { api } from '@/lib/api-client';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
@@ -23,6 +24,8 @@ interface ListResult<T> {
   pageSize: number;
 }
 
+const PAGE_SIZE = 50;
+
 const KIND_LABELS: Record<string, string> = {
   article: '文章',
   video: '视频',
@@ -39,69 +42,149 @@ const KIND_COLORS: Record<string, string> = {
   post: 'bg-orange-100 text-orange-800',
 };
 
+// ── 导出工具 ──────────────────────────────────────────────────────────────────
+
+function itemsToCsv(items: Item[]): string {
+  const headers = ['id', 'platform', 'kind', 'spider', 'url', 'sourceId', 'title', 'fetchedAt'];
+  const escape = (v: unknown) => {
+    const s = v == null ? '' : String(v);
+    return s.includes(',') || s.includes('"') || s.includes('\n')
+      ? `"${s.replace(/"/g, '""')}"`
+      : s;
+  };
+  const rows = items.map((it) => {
+    const title = (it.payload as { title?: string } | null)?.title ?? '';
+    return [it.id, it.platform, it.kind, it.spider, it.url, it.sourceId, title, it.fetchedAt]
+      .map(escape)
+      .join(',');
+  });
+  return [headers.join(','), ...rows].join('\n');
+}
+
+function downloadBlob(content: string, filename: string, mime: string) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── 页面主体 ──────────────────────────────────────────────────────────────────
+
 export default function ItemsPage() {
   const [q, setQ] = useState('');
   const [platform, setPlatform] = useState('');
   const [kind, setKind] = useState('');
+  const [page, setPage] = useState(1);
+  const [exporting, setExporting] = useState(false);
 
-  const buildQuery = () => {
-    const params = new URLSearchParams({ pageSize: '50' });
+  // 筛选条件变化时重置到第 1 页
+  function setFilter(fn: () => void) {
+    fn();
+    setPage(1);
+  }
+
+  function buildParams(overridePage?: number, overridePageSize?: number) {
+    const params = new URLSearchParams({
+      page: String(overridePage ?? page),
+      pageSize: String(overridePageSize ?? PAGE_SIZE),
+    });
     if (q) params.set('q', q);
     if (platform) params.set('platform', platform);
     if (kind) params.set('kind', kind);
-    return `/api/items?${params.toString()}`;
-  };
+    return params;
+  }
 
   const { data, isLoading } = useQuery({
-    queryKey: ['items', q, platform, kind],
-    queryFn: () => api.get<ListResult<Item>>(buildQuery()),
+    queryKey: ['items', q, platform, kind, page],
+    queryFn: () => api.get<ListResult<Item>>(`/api/items?${buildParams().toString()}`),
     refetchInterval: 10_000,
   });
 
-  // 从已有数据归纳出 platform / kind 选项（辅助筛选下拉）
-  const platforms = Array.from(new Set(data?.data.map((i) => i.platform).filter(Boolean))).sort();
-  const kinds = Array.from(new Set(data?.data.map((i) => i.kind).filter(Boolean))).sort();
+  const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 1;
+
+  // ── 导出：拉取当前筛选条件下全部数据 ──────────────────────────────────────
+  async function handleExport(format: 'csv' | 'json') {
+    setExporting(true);
+    try {
+      const all = await api.get<ListResult<Item>>(`/api/items?${buildParams(1, 5000).toString()}`);
+      const ts = new Date().toISOString().slice(0, 10);
+      if (format === 'csv') {
+        downloadBlob(itemsToCsv(all.data), `items-${ts}.csv`, 'text/csv;charset=utf-8;');
+      } else {
+        downloadBlob(JSON.stringify(all.data, null, 2), `items-${ts}.json`, 'application/json');
+      }
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  // platform / kind 选项从当前页数据推断（静态已知平台兜底）
+  const knownPlatforms = ['youtube', 'bilibili', 'xhs', 'nextjs-blog'];
+  const knownKinds = Object.keys(KIND_LABELS);
 
   return (
     <div className="space-y-4">
       {/* ── 筛选栏 ── */}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Input
           placeholder="搜索 URL 或 title..."
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => setFilter(() => setQ(e.target.value))}
           className="max-w-xs"
         />
 
-        {/* Platform 筛选 */}
         <select
           value={platform}
-          onChange={(e) => setPlatform(e.target.value)}
+          onChange={(e) => setFilter(() => setPlatform(e.target.value))}
           className="rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
         >
           <option value="">所有平台</option>
-          {platforms.map((p) => (
-            <option key={p} value={p ?? ''}>
+          {knownPlatforms.map((p) => (
+            <option key={p} value={p}>
               {p}
             </option>
           ))}
         </select>
 
-        {/* Kind 筛选 */}
         <select
           value={kind}
-          onChange={(e) => setKind(e.target.value)}
+          onChange={(e) => setFilter(() => setKind(e.target.value))}
           className="rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
         >
           <option value="">所有类型</option>
-          {kinds.map((k) => (
-            <option key={k} value={k ?? ''}>
-              {k ? (KIND_LABELS[k] ?? k) : k}
+          {knownKinds.map((k) => (
+            <option key={k} value={k}>
+              {KIND_LABELS[k] ?? k}
             </option>
           ))}
         </select>
 
-        <span className="self-center text-sm text-muted-foreground">{data?.total ?? 0} 条</span>
+        <span className="flex-1 text-sm text-muted-foreground">共 {data?.total ?? 0} 条</span>
+
+        {/* 导出按钮 */}
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={exporting || !data?.total}
+          onClick={() => {
+            void handleExport('csv');
+          }}
+        >
+          {exporting ? '导出中…' : '导出 CSV'}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={exporting || !data?.total}
+          onClick={() => {
+            void handleExport('json');
+          }}
+        >
+          导出 JSON
+        </Button>
       </div>
 
       <Card>
@@ -159,8 +242,11 @@ export default function ItemsPage() {
                         <Badge variant="outline">{it.type}</Badge>
                       )}
                     </TableCell>
-                    <TableCell>
-                      <Link href={`/items/${String(it.id)}`} className="hover:underline">
+                    <TableCell className="max-w-sm">
+                      <Link
+                        href={`/items/${String(it.id)}`}
+                        className="line-clamp-1 hover:underline"
+                      >
                         {title ?? it.url}
                       </Link>
                     </TableCell>
@@ -174,6 +260,31 @@ export default function ItemsPage() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* ── 翻页控件 ── */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => p - 1)}
+          >
+            ‹ 上一页
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            第 {page} / {totalPages} 页
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            下一页 ›
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
