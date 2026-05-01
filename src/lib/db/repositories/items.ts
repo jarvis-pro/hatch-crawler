@@ -25,15 +25,54 @@ export interface SaveItemInput {
 
 /**
  * 保存一条抓取结果。
- * 通过 (spider, url_hash, content_hash) 的唯一索引去重；
- * 内容相同则跳过、isNew = false。
+ *
+ * 去重策略（双层）：
+ *   1. platform + sourceId 均非空时：upsert ——同一来源条目始终保留最新 payload，
+ *      由 uniq_items_platform_source 部分唯一索引保障。
+ *   2. 其余情况：(spider, url_hash, content_hash) 唯一索引；冲突时 isNew=false。
+ *
+ * isNew=true  → 首次写入
+ * isNew=false → 已存在（内容相同跳过 / upsert 更新了已有行）
  */
 export async function save(db: Db, input: SaveItemInput): Promise<{ isNew: boolean }> {
   const urlHash = sha1(input.url);
   const contentHash = sha1(JSON.stringify(input.payload));
+
+  // ── 有来源 ID：走 upsert，用 platform+sourceId 去重 ──────────────────────────
+  if (input.platform && input.sourceId) {
+    // 利用部分唯一索引做 ON CONFLICT，xmax=0 表示新插入行（xmax!=0 表示已更新行）
+    const rows = await db.$queryRawUnsafe<{ is_new: boolean }[]>(
+      `INSERT INTO "items"
+         ("run_id","spider","type","url","url_hash","content_hash","payload","platform","kind","source_id")
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10)
+       ON CONFLICT ("platform","source_id")
+         WHERE "platform" IS NOT NULL AND "source_id" IS NOT NULL
+       DO UPDATE SET
+         "run_id"       = EXCLUDED."run_id",
+         "spider"       = EXCLUDED."spider",
+         "url"          = EXCLUDED."url",
+         "url_hash"     = EXCLUDED."url_hash",
+         "content_hash" = EXCLUDED."content_hash",
+         "payload"      = EXCLUDED."payload",
+         "kind"         = EXCLUDED."kind",
+         "fetched_at"   = now()
+       RETURNING (xmax = 0) AS is_new`,
+      input.runId,
+      input.spider,
+      input.type,
+      input.url,
+      urlHash,
+      contentHash,
+      JSON.stringify(input.payload),
+      input.platform,
+      input.kind ?? null,
+      input.sourceId,
+    );
+    return { isNew: rows[0]?.is_new === true };
+  }
+
+  // ── 无来源 ID：原有 try/catch 路径 ───────────────────────────────────────────
   try {
-    // Phase 5：platform/kind/sourceId 是新列，pnpm db:generate 后 Prisma 类型才会包含。
-    // 用 as unknown 过渡，运行时行为正确。
     await (db.item.create as (args: unknown) => Promise<unknown>)({
       data: {
         runId: input.runId,
@@ -50,7 +89,6 @@ export async function save(db: Db, input: SaveItemInput): Promise<{ isNew: boole
     });
     return { isNew: true };
   } catch (err) {
-    // P2002 = 唯一约束冲突 → 已存在相同内容，按 isNew=false 处理
     if (
       typeof err === 'object' &&
       err !== null &&
@@ -156,4 +194,14 @@ export async function list(
 export async function getById(db: Db, id: number): Promise<Item | null> {
   const row = await db.item.findUnique({ where: { id } });
   return row ? shape(row) : null;
+}
+
+/**
+ * 批量删除指定 id 列表的条目。
+ * 返回实际删除行数。
+ */
+export async function deleteMany(db: Db, ids: number[]): Promise<number> {
+  if (ids.length === 0) return 0;
+  const result = await db.item.deleteMany({ where: { id: { in: ids } } });
+  return result.count;
 }

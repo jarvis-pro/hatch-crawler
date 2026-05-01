@@ -173,6 +173,9 @@ END $$`,
   `ALTER TABLE "accounts" ADD COLUMN IF NOT EXISTS "last_test_ok" boolean`,
   `ALTER TABLE "accounts" ADD COLUMN IF NOT EXISTS "quota_used_today" integer NOT NULL DEFAULT 0`,
   `ALTER TABLE "accounts" ADD COLUMN IF NOT EXISTS "quota_reset_at" date NOT NULL DEFAULT CURRENT_DATE`,
+
+  // ── Phase X：Spider 连续失败计数 ─────────────────────────────────────────
+  `ALTER TABLE "spiders" ADD COLUMN IF NOT EXISTS "consecutive_failures" integer NOT NULL DEFAULT 0`,
 ];
 
 export interface MigrateResult {
