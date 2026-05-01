@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '@/lib/api-client';
@@ -339,12 +339,18 @@ function ProxyTab() {
   });
 
   const [text, setText] = useState<string>('');
+  const [initialized, setInitialized] = useState(false);
 
   // 从 settings 初始化：value 是字符串数组，每行一个 URL
-  if (data && !text) {
-    const list = Array.isArray(data.value) ? (data.value as string[]) : [];
-    setText(list.join('\n'));
-  }
+  // 必须用 useEffect，避免在 render 里直接 setState：
+  // 代理池为空时 [].join('\n') === '' 是 falsy，!text 永远为真，会无限循环
+  useEffect(() => {
+    if (data && !initialized) {
+      const list = Array.isArray(data.value) ? (data.value as string[]) : [];
+      setText(list.join('\n'));
+      setInitialized(true);
+    }
+  }, [data, initialized]);
 
   const save = useMutation({
     mutationFn: (lines: string[]) => api.put('/api/settings/proxy_pool', { value: lines }),
@@ -407,12 +413,17 @@ function WebhookTab() {
   const [url, setUrl] = useState('');
   const [maxFail, setMaxFail] = useState('');
 
-  if (data && !url && typeof data.value === 'string' && data.value) {
-    setUrl(data.value);
-  }
-  if (maxFailData && !maxFail) {
-    setMaxFail(String(maxFailData.value ?? '3'));
-  }
+  useEffect(() => {
+    if (data && typeof data.value === 'string') {
+      setUrl(data.value);
+    }
+  }, [data]);
+
+  useEffect(() => {
+    if (maxFailData) {
+      setMaxFail(String(maxFailData.value ?? '3'));
+    }
+  }, [maxFailData]);
 
   const save = useMutation({
     mutationFn: (webhookUrl: string) =>
@@ -522,9 +533,11 @@ function SettingEditor({ settingKey }: { settingKey: string }) {
 
   const [text, setText] = useState<string>('');
 
-  if (data && !text) {
-    setText(JSON.stringify(data.value ?? {}, null, 2));
-  }
+  useEffect(() => {
+    if (data) {
+      setText(JSON.stringify(data.value ?? {}, null, 2));
+    }
+  }, [data]);
 
   const save = useMutation({
     mutationFn: (value: unknown) => api.put(`/api/settings/${settingKey}`, { value }),
