@@ -3,7 +3,6 @@
  */
 
 import type {
-  Attachment as PrismaAttachment,
   Event as PrismaEvent,
   Item as PrismaItem,
   Run as PrismaRun,
@@ -14,16 +13,7 @@ import type {
 
 // 客户端
 export { getDb, closeDb, type Db } from './client';
-export {
-  getBoss,
-  closeBoss,
-  QUEUE_CRAWL,
-  QUEUE_DOWNLOAD,
-  QUEUE_TRANSCODE,
-  type CrawlJobData,
-  type DownloadJobData,
-  type TranscodeJobData,
-} from './boss';
+export { getBoss, closeBoss, QUEUE_CRAWL, type CrawlJobData } from './boss';
 
 // 迁移
 export { runMigrations, type MigrateResult } from './migrate';
@@ -36,10 +26,9 @@ export * as settingRepo from './repositories/settings';
 export * as visitedRepo from './repositories/visited';
 export * as spiderRepo from './repositories/spiders';
 export * as accountRepo from './repositories/accounts';
-export * as attachmentRepo from './repositories/attachments';
 
 // 枚举：Prisma 把它们生成成 const object，可以同时当类型和值用
-export { RunStatus, EventLevel, AttachmentKind, AttachmentStatus } from '@prisma/client';
+export { RunStatus, EventLevel } from '@prisma/client';
 
 /**
  * 业务实体类型。
@@ -90,12 +79,6 @@ export type Item = Omit<PrismaItem, 'payload'> & {
 export type Visited = PrismaVisited;
 export type Setting = PrismaSetting;
 
-// RFC 0002 Phase A：附件实体
-// byteSize 在 Prisma 里是 BigInt，前端 / API 用 number 更方便（文件单文件不会超过 Number.MAX_SAFE_INTEGER）
-export type Attachment = Omit<PrismaAttachment, 'byteSize'> & {
-  byteSize: number | null;
-};
-
 // repository create-input 速记
 export type NewSpider = {
   /** 注册表类型键（如 "youtube-search"），worker 靠此反查实现类 */
@@ -112,8 +95,6 @@ export type NewSpider = {
   cronSchedule?: string | null;
   platform?: string | null;
   defaultParams?: Record<string, unknown>;
-  /** RFC 0002 Phase D：抓取完成后自动派发 item 关联的附件下载 */
-  autoDownload?: boolean;
 };
 
 export type NewRun = {
@@ -145,15 +126,4 @@ export type NewItem = {
   platform?: string | null;
   kind?: string | null;
   sourceId?: string | null;
-};
-
-export type NewAttachment = {
-  itemId: number;
-  spider: string;
-  kind: import('@prisma/client').AttachmentKind;
-  sourceUrl: string;
-  fetcherKind: 'http' | 'yt-dlp';
-  mimeType?: string | null;
-  parentId?: string | null;
-  transcodeOp?: string | null;
 };

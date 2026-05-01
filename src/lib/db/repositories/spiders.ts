@@ -23,7 +23,6 @@ interface RawRow {
   platform: string | null;
   emits_kinds: unknown;
   default_params: unknown;
-  auto_download: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -33,7 +32,7 @@ const SELECT_COLS = `
   "start_urls", "allowed_hosts",
   "max_depth", "concurrency", "per_host_interval_ms",
   "enabled", "cron_schedule", "platform", "emits_kinds",
-  "default_params", "auto_download",
+  "default_params",
   "created_at", "updated_at"
 `.trim();
 
@@ -53,7 +52,6 @@ function shape(row: RawRow): Spider {
     platform: row.platform ?? null,
     emitsKinds: (row.emits_kinds as string[]) ?? [],
     defaultParams: (row.default_params as Record<string, unknown>) ?? {},
-    autoDownload: row.auto_download ?? false,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   } as Spider;
@@ -90,13 +88,13 @@ export async function create(db: Db, input: NewSpider): Promise<Spider> {
       "start_urls", "allowed_hosts",
       "max_depth", "concurrency", "per_host_interval_ms",
       "enabled", "cron_schedule", "platform",
-      "default_params", "auto_download"
+      "default_params"
     ) VALUES (
       $1, $2, $1, $3,
       $4::jsonb, $5::jsonb,
       $6, $7, $8,
       $9, $10, $11,
-      $12::jsonb, $13
+      $12::jsonb
     ) RETURNING ${SELECT_COLS}`,
     input.name,
     input.type,
@@ -110,7 +108,6 @@ export async function create(db: Db, input: NewSpider): Promise<Spider> {
     input.cronSchedule ?? null,
     input.platform ?? null,
     JSON.stringify(input.defaultParams ?? {}),
-    input.autoDownload ?? false,
   );
   if (!rows[0]) throw new Error('spider insert returned no row');
   return shape(rows[0]);
@@ -132,9 +129,8 @@ export async function update(db: Db, id: string, input: NewSpider): Promise<Spid
       "cron_schedule"        = $10,
       "platform"             = $11,
       "default_params"       = $12::jsonb,
-      "auto_download"        = $13,
       "updated_at"           = now()
-    WHERE "id" = $14::uuid
+    WHERE "id" = $13::uuid
     RETURNING ${SELECT_COLS}`,
     input.name,
     input.type,
@@ -148,7 +144,6 @@ export async function update(db: Db, id: string, input: NewSpider): Promise<Spid
     input.cronSchedule ?? null,
     input.platform ?? null,
     JSON.stringify(input.defaultParams ?? {}),
-    input.autoDownload ?? false,
     id,
   );
   if (!rows[0]) throw new Error(`spider not found: ${id}`);

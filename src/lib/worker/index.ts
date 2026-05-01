@@ -1,19 +1,9 @@
 import 'server-only';
-import {
-  getBoss,
-  getDb,
-  QUEUE_CRAWL,
-  QUEUE_DOWNLOAD,
-  QUEUE_TRANSCODE,
-  runRepo,
-  spiderRepo,
-} from '@/lib/db';
-import type { CrawlJobData, DownloadJobData, TranscodeJobData } from '@/lib/db';
+import { getBoss, getDb, QUEUE_CRAWL, runRepo, spiderRepo } from '@/lib/db';
+import type { CrawlJobData } from '@/lib/db';
 import { env } from '../env';
 import { handleCrawlJob } from './job-handler';
-import { handleDownloadJob } from './download-job-handler';
-import { handleTranscodeJob } from './transcode-job-handler';
-import { subscribe, subscribeAttachment } from './event-bus';
+import { subscribe } from './event-bus';
 
 /**
  * Worker 启动入口（被 instrumentation.ts 调用）。
@@ -110,8 +100,6 @@ export async function startWorker(): Promise<void> {
 
   // 2) 创建队列（pg-boss v10 起需要显式 createQueue）
   await boss.createQueue(QUEUE_CRAWL);
-  await boss.createQueue(QUEUE_DOWNLOAD);
-  await boss.createQueue(QUEUE_TRANSCODE);
 
   // 3) 订阅 crawl 队列
   await boss.work<CrawlJobData>(QUEUE_CRAWL, async ([job]) => {
@@ -123,38 +111,6 @@ export async function startWorker(): Promise<void> {
     } finally {
       state.abortControllers.delete(job.data.runId);
     }
-  });
-
-  // 3b) 订阅 download 队列（RFC 0002 Phase A）
-  // 并发上限：同时跑 4 个下载（大文件 IO 不打爆 web 进程）
-  await boss.work<DownloadJobData>(QUEUE_DOWNLOAD, { batchSize: 4 }, async (jobs) => {
-    await Promise.all(
-      jobs.map(async (job) => {
-        const ac = new AbortController();
-        state.abortControllers.set(`attach:${job.data.attachmentId}`, ac);
-        try {
-          await handleDownloadJob(db, job.data, ac.signal);
-        } finally {
-          state.abortControllers.delete(`attach:${job.data.attachmentId}`);
-        }
-      }),
-    );
-  });
-
-  // 3c) 订阅 transcode 队列（RFC 0002 Phase B）
-  // 并发上限 2：CPU 密集，避免打爆机器
-  await boss.work<TranscodeJobData>(QUEUE_TRANSCODE, { batchSize: 2 }, async (jobs) => {
-    await Promise.all(
-      jobs.map(async (job) => {
-        const ac = new AbortController();
-        state.abortControllers.set(`tx:${job.data.attachmentId}`, ac);
-        try {
-          await handleTranscodeJob(db, job.data, ac.signal);
-        } finally {
-          state.abortControllers.delete(`tx:${job.data.attachmentId}`);
-        }
-      }),
-    );
   });
 
   // 4) 注册所有启用 Spider 的 cron 调度
@@ -181,4 +137,4 @@ export function abortRun(runId: string): boolean {
 }
 
 // 也 re-export EventBus 的订阅接口，方便 SSE 路由使用
-export { subscribe, subscribeAttachment };
+export { subscribe };
