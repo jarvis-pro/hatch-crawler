@@ -137,6 +137,33 @@ END $$`,
        "source_id" = "url"
    WHERE "spider" = 'nextjs-blog'
      AND "platform" IS NULL`,
+
+  // ── Phase 6：accounts 表（凭据管理）──────────────────────────────
+
+  `DO $$ BEGIN
+  CREATE TYPE "account_kind" AS ENUM ('cookie', 'oauth', 'apikey', 'session');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$`,
+
+  `DO $$ BEGIN
+  CREATE TYPE "account_status" AS ENUM ('active', 'expired', 'banned', 'disabled');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$`,
+
+  `CREATE TABLE IF NOT EXISTS "accounts" (
+  "id" serial PRIMARY KEY,
+  "platform" varchar(32) NOT NULL,
+  "label" varchar(64) NOT NULL,
+  "kind" "account_kind" NOT NULL,
+  "payload_enc" text NOT NULL,
+  "expires_at" timestamp,
+  "status" "account_status" NOT NULL DEFAULT 'active',
+  "last_used_at" timestamp,
+  "failure_count" integer NOT NULL DEFAULT 0,
+  "created_at" timestamp NOT NULL DEFAULT now(),
+  "updated_at" timestamp NOT NULL DEFAULT now()
+)`,
+  `CREATE INDEX IF NOT EXISTS "idx_accounts_platform_status" ON "accounts" ("platform", "status")`,
 ];
 
 export interface MigrateResult {

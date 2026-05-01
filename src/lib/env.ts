@@ -27,4 +27,15 @@ export const env = {
   get logLevel(): string {
     return process.env.LOG_LEVEL ?? 'info';
   },
+  /**
+   * 凭据加密主密钥（AES-256-GCM）。
+   * 格式：hex 编码的 32 字节，共 64 个字符。
+   * 生产环境必须设置；本地开发若未设置则 fallback 到全零密钥（不安全，仅开发用）。
+   */
+  get accountsMasterKey(): string {
+    return (
+      process.env.ACCOUNTS_MASTER_KEY ??
+      '0000000000000000000000000000000000000000000000000000000000000000'
+    );
+  },
 };

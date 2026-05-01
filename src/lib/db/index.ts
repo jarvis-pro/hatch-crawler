@@ -25,6 +25,7 @@ export * as eventRepo from './repositories/events';
 export * as settingRepo from './repositories/settings';
 export * as visitedRepo from './repositories/visited';
 export * as spiderRepo from './repositories/spiders';
+export * as accountRepo from './repositories/accounts';
 
 // 枚举：Prisma 把它们生成成 const object，可以同时当类型和值用
 export { RunStatus, EventLevel } from '@prisma/client';

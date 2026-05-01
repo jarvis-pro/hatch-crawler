@@ -157,6 +157,45 @@ model Visited {
 }
 
 // ──────────────────────────────────────────────────────────
+// accounts —— 平台凭据（Phase 6）
+// ──────────────────────────────────────────────────────────
+
+enum AccountKind {
+  cookie
+  oauth
+  apikey
+  session
+
+  @@map("account_kind")
+}
+
+enum AccountStatus {
+  active
+  expired
+  banned
+  disabled
+
+  @@map("account_status")
+}
+
+model Account {
+  id           Int           @id @default(autoincrement())
+  platform     String        @db.VarChar(32)
+  label        String        @db.VarChar(64)
+  kind         AccountKind
+  payloadEnc   String        @map("payload_enc") @db.Text
+  expiresAt    DateTime?     @map("expires_at") @db.Timestamp(6)
+  status       AccountStatus @default(active)
+  lastUsedAt   DateTime?     @map("last_used_at") @db.Timestamp(6)
+  failureCount Int           @default(0) @map("failure_count")
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt    DateTime      @default(now()) @map("updated_at") @db.Timestamp(6)
+
+  @@index([platform, status], map: "idx_accounts_platform_status")
+  @@map("accounts")
+}
+
+// ──────────────────────────────────────────────────────────
 // settings —— 通用 KV
 // ──────────────────────────────────────────────────────────
 
