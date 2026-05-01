@@ -1,5 +1,5 @@
 'use client';
-import { use } from 'react';
+import React, { use } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import type { Run, Spider } from '@/lib/db';
@@ -197,14 +197,10 @@ export default function SpiderDetailPage({ params }: { params: Promise<{ name: s
               ['cronSchedule', spider.cronSchedule ?? '—'],
               ['enabled', spider.enabled ? '✓ 启用' : '— 禁用'],
             ].map(([label, val]) => (
-              <>
-                <dt key={`dt-${label}`} className="text-muted-foreground">
-                  {label}
-                </dt>
-                <dd key={`dd-${label}`} className="font-mono">
-                  {val}
-                </dd>
-              </>
+              <React.Fragment key={label}>
+                <dt className="text-muted-foreground">{label}</dt>
+                <dd className="font-mono">{val}</dd>
+              </React.Fragment>
             ))}
             {spider.startUrls.length > 0 && (
               <>
