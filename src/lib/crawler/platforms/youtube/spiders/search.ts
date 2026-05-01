@@ -68,7 +68,7 @@ export class YoutubeSearchSpider extends BaseSpider {
   }
 
   override async parse(ctx: SpiderContext): Promise<void> {
-    const { url, type: jobType } = ctx;
+    const { type: jobType } = ctx;
 
     // ── videos.list 详情 ──────────────────────────────────────────────────────
     if (jobType === 'videos') {
@@ -76,19 +76,27 @@ export class YoutubeSearchSpider extends BaseSpider {
       try {
         body = JSON.parse(ctx.response.body) as YTVideosResponse;
       } catch {
-        logger.error({ url }, 'YoutubeSearchSpider: videos.list JSON 解析失败');
+        ctx.log('error', 'YouTube videos.list JSON 解析失败');
         return;
       }
 
       if (body.error) {
-        logger.error(
-          { url, code: body.error.code, message: body.error.message },
-          'YouTube videos.list 返回错误',
-        );
+        ctx.log('error', `YouTube videos.list API 错误：${body.error.message}`, {
+          code: body.error.code,
+          query: this.query,
+        });
         return;
       }
 
-      for (const item of body.items ?? []) {
+      const items = body.items ?? [];
+      if (items.length === 0) {
+        ctx.log('warn', 'YouTube videos.list 返回 0 items（请求的 videoId 可能已删除/私密）', {
+          query: this.query,
+        });
+        return;
+      }
+
+      for (const item of items) {
         const payload = videoItemToPayload(item);
         ctx.emit({
           url: `https://www.youtube.com/watch?v=${item.id}`,
@@ -111,21 +119,34 @@ export class YoutubeSearchSpider extends BaseSpider {
       try {
         body = JSON.parse(ctx.response.body) as YTSearchResponse;
       } catch {
-        logger.error({ url }, 'YoutubeSearchSpider: search.list JSON 解析失败');
+        ctx.log('error', 'YouTube search.list JSON 解析失败');
         return;
       }
 
       if (body.error) {
-        logger.error(
-          { url, code: body.error.code, message: body.error.message },
-          'YouTube search.list 返回错误',
-        );
+        ctx.log('error', `YouTube search.list API 错误：${body.error.message}`, {
+          code: body.error.code,
+          query: this.query,
+          pageIndex,
+        });
         return;
       }
 
       const videoIds = (body.items ?? [])
         .map((i) => i.id.videoId)
         .filter((id): id is string => Boolean(id));
+
+      if (videoIds.length === 0 && pageIndex === 0) {
+        ctx.log(
+          'warn',
+          `YouTube search.list 返回 0 items（query="${this.query}"，可能词无结果/被地区屏蔽）`,
+          {
+            query: this.query,
+            totalResults: body.pageInfo?.totalResults ?? null,
+            regionCode: body.regionCode ?? null,
+          },
+        );
+      }
 
       if (videoIds.length > 0) {
         ctx.enqueue({

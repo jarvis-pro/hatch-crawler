@@ -62,6 +62,9 @@ export type CrawlerEvent =
       level: EventLevel;
       url?: string;
       message: string;
+      // 可选结构化负载，用于把 spider 业务上下文（channelId、http status、API code 等）
+      // 一起带进 events 表的 payload 列。仅在 level==='error' 时才计入 RunStats.errors。
+      payload?: Record<string, unknown>;
       at: number;
     }
   | {

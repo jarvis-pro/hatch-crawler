@@ -70,7 +70,7 @@ export class YoutubeChannelVideosSpider extends BaseSpider {
   }
 
   override async parse(ctx: SpiderContext): Promise<void> {
-    const { url, type: jobType } = ctx;
+    const { type: jobType } = ctx;
 
     // ── videos.list 详情 ──────────────────────────────────────────────────────
     if (jobType === 'videos') {
@@ -78,19 +78,27 @@ export class YoutubeChannelVideosSpider extends BaseSpider {
       try {
         body = JSON.parse(ctx.response.body) as YTVideosResponse;
       } catch {
-        logger.error({ url }, 'YoutubeChannelVideosSpider: videos.list JSON 解析失败');
+        ctx.log('error', 'YouTube videos.list JSON 解析失败');
         return;
       }
 
       if (body.error) {
-        logger.error(
-          { url, code: body.error.code, message: body.error.message },
-          'YouTube videos.list 返回错误',
-        );
+        ctx.log('error', `YouTube videos.list API 错误：${body.error.message}`, {
+          code: body.error.code,
+          channelId: this.channelId,
+        });
         return;
       }
 
-      for (const item of body.items ?? []) {
+      const items = body.items ?? [];
+      if (items.length === 0) {
+        ctx.log('warn', 'YouTube videos.list 返回 0 items（请求的 videoId 可能已删除/私密）', {
+          channelId: this.channelId,
+        });
+        return;
+      }
+
+      for (const item of items) {
         const payload = videoItemToPayload(item);
         ctx.emit({
           url: `https://www.youtube.com/watch?v=${item.id}`,
@@ -113,15 +121,16 @@ export class YoutubeChannelVideosSpider extends BaseSpider {
       try {
         body = JSON.parse(ctx.response.body) as YTSearchResponse;
       } catch {
-        logger.error({ url }, 'YoutubeChannelVideosSpider: search.list JSON 解析失败');
+        ctx.log('error', 'YouTube search.list JSON 解析失败');
         return;
       }
 
       if (body.error) {
-        logger.error(
-          { url, code: body.error.code, message: body.error.message },
-          'YouTube search.list 返回错误',
-        );
+        ctx.log('error', `YouTube search.list API 错误：${body.error.message}`, {
+          code: body.error.code,
+          channelId: this.channelId,
+          pageIndex,
+        });
         return;
       }
 
@@ -129,6 +138,20 @@ export class YoutubeChannelVideosSpider extends BaseSpider {
       const videoIds = (body.items ?? [])
         .map((i) => i.id.videoId)
         .filter((id): id is string => Boolean(id));
+
+      // 第一页空响应通常意味着 channelId 错 / 频道无视频 / 地区屏蔽——必须可见。
+      // 后续分页空响应是正常翻页结尾，不告警。
+      if (videoIds.length === 0 && pageIndex === 0) {
+        ctx.log(
+          'warn',
+          `YouTube search.list 返回 0 items（channelId=${this.channelId}，可能 ID 错误/频道无视频/被地区屏蔽）`,
+          {
+            channelId: this.channelId,
+            totalResults: body.pageInfo?.totalResults ?? null,
+            regionCode: body.regionCode ?? null,
+          },
+        );
+      }
 
       if (videoIds.length > 0) {
         // 批量拉取完整视频信息

@@ -17,6 +17,15 @@ export interface SpiderContext {
   enqueue: (next: Omit<QueueItem, 'depth'> & { depth?: number }) => void;
   /** 让 Spider 提交一条解析结果 */
   emit: (item: Omit<CrawlItem, 'spider'>) => void;
+  /**
+   * 让 Spider 上报运行期诊断信息（API 业务错误、空响应、配额提示等）。
+   * 这条消息会写进 events 表 + 推到 SSE 日志流；level='error' 才计入 RunStats.errors。
+   */
+  log: (
+    level: 'info' | 'warn' | 'error',
+    message: string,
+    payload?: Record<string, unknown>,
+  ) => void;
 }
 
 /**
@@ -125,6 +134,16 @@ export async function runSpider(spider: BaseSpider, opts: RunOptions): Promise<R
         meta: job.meta ?? {},
         depth: job.depth,
         response,
+        log: (level, message, payload) => {
+          emit({
+            type: 'error',
+            level,
+            url: job.url,
+            message,
+            ...(payload ? { payload } : {}),
+            at: Date.now(),
+          });
+        },
         enqueue: (next) => {
           const depth = next.depth ?? job.depth + 1;
           if (depth > spider.maxDepth) {

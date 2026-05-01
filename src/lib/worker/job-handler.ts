@@ -103,7 +103,8 @@ export async function handleCrawlJob(
     } else if (event.type === 'emitted') {
       const delta = event.isNew ? { emitted: 1, newItems: 1 } : { emitted: 1 };
       void runRepo.incrementStats(db, runId, delta).catch(() => {});
-    } else if (event.type === 'error') {
+    } else if (event.type === 'error' && event.level === 'error') {
+      // 仅严重级别才计入 errors；warn/info 走相同 type='error' 通道但属于诊断信息
       void runRepo.incrementStats(db, runId, { errors: 1 }).catch(() => {});
     }
   };
