@@ -63,6 +63,7 @@ export class ApiClient {
   async get<T = unknown>(
     url: string,
     params?: Record<string, string | number | undefined>,
+    extraHeaders?: Record<string, string>,
   ): Promise<ApiResponse<T>> {
     // 把 params 追加到 URL（忽略 undefined 值）
     const fullUrl = params
@@ -79,7 +80,7 @@ export class ApiClient {
     for (let attempt = 1; attempt <= this.retryAttempts; attempt++) {
       await this.throttle();
       try {
-        const res = await this.client.get(fullUrl);
+        const res = await this.client.get(fullUrl, { headers: extraHeaders });
 
         if (res.statusCode === 429) {
           const backoff = Math.min(1000 * 2 ** attempt, 30_000);
@@ -109,6 +110,56 @@ export class ApiClient {
 
     throw new Error(
       `API GET ${fullUrl} failed after ${this.retryAttempts} attempts: ${
+        (lastErr as Error)?.message ?? 'unknown'
+      }`,
+    );
+  }
+
+  /**
+   * 发起 POST 请求，body 为 JSON 字符串（已序列化），可追加额外 headers。
+   */
+  async post<T = unknown>(
+    url: string,
+    body: string,
+    extraHeaders?: Record<string, string>,
+  ): Promise<ApiResponse<T>> {
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= this.retryAttempts; attempt++) {
+      await this.throttle();
+      try {
+        const res = await this.client.post(url, {
+          body,
+          headers: extraHeaders,
+        });
+
+        if (res.statusCode === 429) {
+          const backoff = Math.min(1000 * 2 ** attempt, 30_000);
+          logger.warn({ url, attempt, backoff }, 'API rate limited, backing off');
+          await sleep(backoff);
+          continue;
+        }
+
+        let data: T;
+        try {
+          data = JSON.parse(res.body) as T;
+        } catch {
+          data = res.body as unknown as T;
+        }
+
+        return { status: res.statusCode, data, headers: res.headers };
+      } catch (err) {
+        lastErr = err;
+        const backoff = Math.min(500 * 2 ** attempt, 10_000);
+        logger.warn(
+          { url, attempt, backoff, err: (err as Error).message },
+          'API POST failed, will retry',
+        );
+        if (attempt < this.retryAttempts) await sleep(backoff);
+      }
+    }
+
+    throw new Error(
+      `API POST ${url} failed after ${this.retryAttempts} attempts: ${
         (lastErr as Error)?.message ?? 'unknown'
       }`,
     );
