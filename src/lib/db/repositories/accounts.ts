@@ -68,6 +68,11 @@ export interface AccountRow {
   status: string;
   lastUsedAt: Date | null;
   failureCount: number;
+  // Phase D
+  lastTestedAt: Date | null;
+  lastTestOk: boolean | null;
+  quotaUsedToday: number;
+  quotaResetAt: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -81,6 +86,10 @@ function shape(row: {
   status: unknown;
   lastUsedAt: Date | null;
   failureCount: number;
+  lastTestedAt?: Date | null;
+  lastTestOk?: boolean | null;
+  quotaUsedToday?: number;
+  quotaResetAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }): AccountRow {
@@ -93,6 +102,10 @@ function shape(row: {
     status: String(row.status),
     lastUsedAt: row.lastUsedAt,
     failureCount: row.failureCount,
+    lastTestedAt: row.lastTestedAt ?? null,
+    lastTestOk: row.lastTestOk ?? null,
+    quotaUsedToday: row.quotaUsedToday ?? 0,
+    quotaResetAt: row.quotaResetAt ?? new Date(),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -134,6 +147,10 @@ export async function listByPlatform(db: Db, platform?: string): Promise<Account
       status: true,
       lastUsedAt: true,
       failureCount: true,
+      lastTestedAt: true,
+      lastTestOk: true,
+      quotaUsedToday: true,
+      quotaResetAt: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -183,6 +200,49 @@ export async function getActivePayload(
 export async function remove(db: Db, id: number): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await (db as any).account.delete({ where: { id } });
+}
+
+/** 记录一次测试结果；若失败则不自动更改 status，只记录 */
+export async function recordTestResult(db: Db, id: number, ok: boolean): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (db as any).account.update({
+    where: { id },
+    data: {
+      lastTestedAt: new Date(),
+      lastTestOk: ok,
+      updatedAt: new Date(),
+    },
+  });
+}
+
+/**
+ * 增加今日配额消耗计数。
+ * 如果 quotaResetAt < today，先重置为 0 再加。
+ */
+export async function incrementQuota(db: Db, id: number, cost: number): Promise<void> {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const row = await (db as any).account.findUnique({
+    where: { id },
+    select: { quotaResetAt: true, quotaUsedToday: true },
+  });
+  if (!row) return;
+
+  const resetAt = new Date((row as { quotaResetAt: Date }).quotaResetAt);
+  resetAt.setHours(0, 0, 0, 0);
+  const needsReset = resetAt < today;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (db as any).account.update({
+    where: { id },
+    data: {
+      quotaUsedToday: needsReset ? cost : { increment: cost },
+      quotaResetAt: needsReset ? today : undefined,
+      updatedAt: new Date(),
+    },
+  });
 }
 
 /** 记录一次失败；failureCount >= threshold 时自动 ban */
