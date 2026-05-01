@@ -8,6 +8,7 @@ const titleMap: Record<string, string> = {
   '/spiders': 'Spiders',
   '/runs': 'Runs',
   '/items': 'Items',
+  '/attachments': 'Attachments',
   '/settings': 'Settings',
 };
 

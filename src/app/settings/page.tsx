@@ -50,6 +50,7 @@ export default function SettingsPage() {
         <TabsTrigger value="accounts">凭据管理</TabsTrigger>
         <TabsTrigger value="proxy">代理池</TabsTrigger>
         <TabsTrigger value="webhook">通知</TabsTrigger>
+        <TabsTrigger value="downloads">下载</TabsTrigger>
         <TabsTrigger value="ua">UA 池</TabsTrigger>
         <TabsTrigger value="defaults">默认参数</TabsTrigger>
       </TabsList>
@@ -61,6 +62,9 @@ export default function SettingsPage() {
       </TabsContent>
       <TabsContent value="webhook">
         <WebhookTab />
+      </TabsContent>
+      <TabsContent value="downloads">
+        <DownloadsTab />
       </TabsContent>
       <TabsContent value="ua">
         <SettingEditor settingKey="ua_pool" />
@@ -514,6 +518,124 @@ function WebhookTab() {
               }}
             >
               {saveMaxFail.isPending ? '保存中…' : '保存'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ── Downloads Tab（RFC 0002）──────────────────────────────────────────────────
+
+interface SystemDepStatus {
+  ok: boolean;
+  version?: string;
+  installHint?: string;
+}
+interface SystemDepsHealth {
+  ffmpeg: SystemDepStatus;
+  ytdlp: SystemDepStatus;
+}
+
+function DepBadge({ name, status }: { name: string; status: SystemDepStatus }) {
+  return (
+    <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2">
+      <div>
+        <p className="font-mono text-sm">
+          {name}{' '}
+          {status.ok ? (
+            <span className="ml-2 rounded bg-green-100 px-1.5 py-0.5 text-xs text-green-800">
+              ✓ 可用
+            </span>
+          ) : (
+            <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-xs text-red-800">
+              ✗ 未安装
+            </span>
+          )}
+        </p>
+        {status.version && <p className="text-xs text-muted-foreground">{status.version}</p>}
+        {!status.ok && status.installHint && (
+          <p className="mt-1 text-xs text-orange-700">{status.installHint}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DownloadsTab() {
+  const qc = useQueryClient();
+
+  const { data: health } = useQuery({
+    queryKey: ['system', 'health'],
+    queryFn: () => api.get<SystemDepsHealth>('/api/system/health'),
+  });
+
+  const { data: ytEnabled } = useQuery({
+    queryKey: ['setting', 'enable_youtube_download'],
+    queryFn: () =>
+      api.get<{ key: string; value: unknown }>('/api/settings/enable_youtube_download'),
+  });
+
+  const enabled = Boolean(ytEnabled?.value);
+
+  const save = useMutation({
+    mutationFn: (v: boolean) => api.put('/api/settings/enable_youtube_download', { value: v }),
+    onSuccess: (_, v) => {
+      toast.success(v ? 'YouTube 下载已启用' : 'YouTube 下载已禁用');
+      void qc.invalidateQueries({ queryKey: ['setting', 'enable_youtube_download'] });
+    },
+    onError: (err) => toast.error(String(err)),
+  });
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>系统依赖</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <p className="text-sm text-muted-foreground">
+            下载与转码功能需要本机装有 ffmpeg / yt-dlp。Docker 镜像已内置；本地 dev 用 brew 安装。
+          </p>
+          {health && (
+            <div className="space-y-2">
+              <DepBadge name="ffmpeg" status={health.ffmpeg} />
+              <DepBadge name="yt-dlp" status={health.ytdlp} />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>YouTube 下载</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="rounded-md border-l-4 border-orange-400 bg-orange-50 px-3 py-2 text-sm text-orange-900">
+            <p className="font-medium">⚠ 法律与合规提示</p>
+            <p className="mt-1 text-xs leading-relaxed">
+              YouTube 服务条款 §III.E 禁止"通过下载之外的方式访问内容"。 使用 yt-dlp
+              下载第三方视频在个人 / 教育 / 研究场景广泛使用，但 <strong>商用风险高</strong>，
+              请确认你的使用场景合规后再启用。启用后，下载队列对 youtube 系 host 限并发为
+              1，避免触发风控。
+            </p>
+          </div>
+          <div className="flex items-center justify-between rounded-md border px-3 py-2">
+            <div>
+              <p className="text-sm font-medium">启用 YouTube 下载（yt-dlp）</p>
+              <p className="text-xs text-muted-foreground">
+                关闭时，下载对话框不显示 yt-dlp 选项，spider autoDownload 也跳过 YouTube 类附件。
+              </p>
+            </div>
+            <Button
+              variant={enabled ? 'destructive' : 'default'}
+              size="sm"
+              disabled={save.isPending || (!enabled && !health?.ytdlp.ok)}
+              onClick={() => save.mutate(!enabled)}
+              title={!enabled && !health?.ytdlp.ok ? '请先安装 yt-dlp 再启用' : undefined}
+            >
+              {save.isPending ? '...' : enabled ? '禁用' : '启用'}
             </Button>
           </div>
         </CardContent>

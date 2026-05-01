@@ -651,6 +651,7 @@ function CronDialog({ spider, onClose }: { spider: Spider; onClose: () => void }
         enabled: spider.enabled,
         platform: spider.platform,
         defaultParams: spider.defaultParams,
+        autoDownload: spider.autoDownload,
         cronSchedule: expr.trim() || null,
       }),
     onSuccess: () => {
@@ -754,6 +755,7 @@ export default function SpidersPage() {
         cronSchedule: s.cronSchedule,
         platform: s.platform,
         defaultParams: s.defaultParams,
+        autoDownload: s.autoDownload,
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['spiders'] });

@@ -1,5 +1,6 @@
 import 'server-only';
 import { type Db, eventRepo, runRepo, accountRepo, settingRepo, spiderRepo } from '@/lib/db';
+import { dispatchForRun, isYoutubeDownloadEnabled } from './attachment-dispatcher';
 import { runSpider, setCrawlerConfig } from '@/lib/crawler';
 import type { CrawlerEvent, EventLevel } from '@/lib/shared';
 import type { CrawlJobData } from '@/lib/db';
@@ -133,6 +134,28 @@ export async function handleCrawlJob(
     // 成功时重置连续失败计数
     void spiderRepo.resetFailures(db, spider).catch(() => {});
     void notifyWebhook(db, runId, spider, finalStatus).catch(() => {});
+
+    // RFC 0002 Phase D：autoDownload 自动派发本次 run 的附件
+    if (finalStatus === 'completed') {
+      const spiderRow = await spiderRepo.getByName(db, spider).catch(() => null);
+      if (spiderRow?.autoDownload) {
+        const allowYoutube = await isYoutubeDownloadEnabled(db);
+        const summary = await dispatchForRun(db, runId, { allowYoutube }).catch((err: unknown) => {
+          const m = err instanceof Error ? err.message : String(err);
+          return { items: 0, queued: 0, skipped: 0, errors: 1, _error: m } as const;
+        });
+        // 不阻塞主流程，仅记录到 events 让看板可见
+        void eventRepo
+          .append(db, {
+            runId,
+            level: 'info' as const,
+            type: 'auto_download',
+            message: `autoDownload: queued=${String(summary.queued)} skipped=${String(summary.skipped)} errors=${String(summary.errors)}`,
+            payload: summary,
+          })
+          .catch(() => {});
+      }
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await runRepo.markFinished(db, runId, 'failed', message);

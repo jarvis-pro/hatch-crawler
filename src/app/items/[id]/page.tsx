@@ -7,6 +7,7 @@ import { api } from '@/lib/api-client';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { JsonViewer } from '@/components/items/json-viewer';
+import { AttachmentsPanel } from '@/components/items/attachments-panel';
 
 // ── 样式映射 ──────────────────────────────────────────────────────────────────
 
@@ -480,6 +481,16 @@ export default function ItemDetailPage({ params }: { params: Promise<{ id: strin
           </CardContent>
         </Card>
       )}
+
+      {/* RFC 0002 Phase A：附件下载 */}
+      <Card>
+        <CardHeader>
+          <CardTitle>附件</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <AttachmentsPanel itemId={data.id} />
+        </CardContent>
+      </Card>
     </div>
   );
 }

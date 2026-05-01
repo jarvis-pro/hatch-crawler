@@ -39,6 +39,7 @@ export async function upsert(db: Db, input: NewSpider): Promise<Spider> {
     // platform 写入：允许传 null（通用爬虫），传值时直接存
     platform: input.platform ?? null,
     defaultParams: input.defaultParams ?? {},
+    autoDownload: input.autoDownload ?? false,
   };
 
   // defaultParams 列在 Prisma generate 前类型不存在，用宽松 cast

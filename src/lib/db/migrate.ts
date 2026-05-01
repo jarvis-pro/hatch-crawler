@@ -176,6 +176,52 @@ END $$`,
 
   // ── Phase X：Spider 连续失败计数 ─────────────────────────────────────────
   `ALTER TABLE "spiders" ADD COLUMN IF NOT EXISTS "consecutive_failures" integer NOT NULL DEFAULT 0`,
+
+  // ── RFC 0002 Phase A：附件下载（attachments 表 + spiders.auto_download + runs.attachments_*）──
+
+  `DO $$ BEGIN
+  CREATE TYPE "attachment_kind" AS ENUM ('video', 'audio', 'image', 'archive', 'document', 'other');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$`,
+
+  `DO $$ BEGIN
+  CREATE TYPE "attachment_status" AS ENUM ('queued', 'downloading', 'transcoding', 'completed', 'failed');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$`,
+
+  `CREATE TABLE IF NOT EXISTS "attachments" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  "item_id" integer NOT NULL REFERENCES "items"("id") ON DELETE CASCADE,
+  "spider" varchar(64) NOT NULL,
+  "kind" "attachment_kind" NOT NULL,
+  "mime_type" varchar(128),
+  "source_url" text NOT NULL,
+  "fetcher_kind" varchar(16) NOT NULL,
+  "storage_path" text,
+  "byte_size" bigint,
+  "sha256" char(64),
+  "parent_id" uuid REFERENCES "attachments"("id") ON DELETE SET NULL,
+  "transcode_op" varchar(32),
+  "status" "attachment_status" NOT NULL DEFAULT 'queued',
+  "progress_pct" integer,
+  "error_message" text,
+  "created_at" timestamp NOT NULL DEFAULT now(),
+  "started_at" timestamp,
+  "finished_at" timestamp
+)`,
+  // 同 spider 同内容的二进制只落一份盘（部分唯一索引）
+  `CREATE UNIQUE INDEX IF NOT EXISTS "uniq_attachments_spider_sha256" ON "attachments" ("spider", "sha256") WHERE "sha256" IS NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS "idx_attachments_item" ON "attachments" ("item_id")`,
+  `CREATE INDEX IF NOT EXISTS "idx_attachments_spider_status" ON "attachments" ("spider", "status")`,
+  `CREATE INDEX IF NOT EXISTS "idx_attachments_status_created" ON "attachments" ("status", "created_at")`,
+
+  // spiders 加 auto_download 开关（默认关）
+  `ALTER TABLE "spiders" ADD COLUMN IF NOT EXISTS "auto_download" boolean NOT NULL DEFAULT false`,
+
+  // runs 加附件统计
+  `ALTER TABLE "runs" ADD COLUMN IF NOT EXISTS "attachments_queued" integer NOT NULL DEFAULT 0`,
+  `ALTER TABLE "runs" ADD COLUMN IF NOT EXISTS "attachments_completed" integer NOT NULL DEFAULT 0`,
+  `ALTER TABLE "runs" ADD COLUMN IF NOT EXISTS "attachments_failed" integer NOT NULL DEFAULT 0`,
 ];
 
 export interface MigrateResult {

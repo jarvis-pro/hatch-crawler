@@ -78,6 +78,33 @@ export default function SpiderDetailPage({ params }: { params: Promise<{ name: s
     onError: (err) => toast.error(`重置失败：${String(err)}`),
   });
 
+  // 切换 autoDownload：抓取完成后是否自动派发附件下载
+  const toggleAutoDownloadMutation = useMutation({
+    mutationFn: (next: boolean) => {
+      if (!spider) throw new Error('spider not loaded');
+      // PUT 是全量更新，必须把所有现有字段透传，否则会被 schema 默认值覆盖。
+      return api.put<Spider>(`/api/spiders/${name}`, {
+        displayName: spider.displayName,
+        description: spider.description,
+        startUrls: spider.startUrls,
+        allowedHosts: spider.allowedHosts,
+        maxDepth: spider.maxDepth,
+        concurrency: spider.concurrency,
+        perHostIntervalMs: spider.perHostIntervalMs,
+        enabled: spider.enabled,
+        cronSchedule: spider.cronSchedule,
+        platform: spider.platform,
+        defaultParams: spider.defaultParams,
+        autoDownload: next,
+      });
+    },
+    onSuccess: (_, next) => {
+      toast.success(next ? '已开启自动下载' : '已关闭自动下载');
+      void queryClient.invalidateQueries({ queryKey: ['spider', name] });
+    },
+    onError: (err) => toast.error(`保存失败：${String(err)}`),
+  });
+
   const onResetVisited = () => {
     if (
       window.confirm(
@@ -129,6 +156,23 @@ export default function SpiderDetailPage({ params }: { params: Promise<{ name: s
           <p className="font-mono text-sm text-muted-foreground">{spider.name}</p>
         </div>
         <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant={spider.autoDownload ? 'destructive' : 'default'}
+            onClick={() => toggleAutoDownloadMutation.mutate(!spider.autoDownload)}
+            disabled={toggleAutoDownloadMutation.isPending}
+            title={
+              spider.autoDownload
+                ? '关闭后，下次 run 完成不会自动派发附件下载（手动仍可触发）'
+                : '开启后，每次 run 完成都会扫描产出 item 并派发可下载附件'
+            }
+          >
+            {toggleAutoDownloadMutation.isPending
+              ? '...'
+              : spider.autoDownload
+                ? '关闭自动下载'
+                : '开启自动下载'}
+          </Button>
           <Button
             size="sm"
             variant="outline"
@@ -230,6 +274,7 @@ export default function SpiderDetailPage({ params }: { params: Promise<{ name: s
               ],
               ['cronSchedule', spider.cronSchedule ?? '—'],
               ['enabled', spider.enabled ? '✓ 启用' : '— 禁用'],
+              ['autoDownload', spider.autoDownload ? '✓ 抓取后自动下载附件' : '— 仅抓元数据'],
             ].map(([label, val]) => (
               <React.Fragment key={label}>
                 <dt className="text-muted-foreground">{label}</dt>

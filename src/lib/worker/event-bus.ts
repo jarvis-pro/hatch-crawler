@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import 'server-only';
-import type { CrawlerEvent } from '@/lib/shared';
+import type { AttachmentEvent, CrawlerEvent } from '@/lib/shared';
 
 /**
  * 进程内事件总线。
@@ -32,6 +32,23 @@ export function publish(runId: string, event: CrawlerEvent): void {
 
 export function subscribe(runId: string, listener: (event: CrawlerEvent) => void): () => void {
   const channel = `run:${runId}`;
+  getEmitter().on(channel, listener);
+  return () => {
+    getEmitter().off(channel, listener);
+  };
+}
+
+// ── RFC 0002 Phase A：附件事件单独通道 ─────────────────────────────────────────
+
+export function publishAttachment(attachmentId: string, event: AttachmentEvent): void {
+  getEmitter().emit(`attach:${attachmentId}`, event);
+}
+
+export function subscribeAttachment(
+  attachmentId: string,
+  listener: (event: AttachmentEvent) => void,
+): () => void {
+  const channel = `attach:${attachmentId}`;
   getEmitter().on(channel, listener);
   return () => {
     getEmitter().off(channel, listener);

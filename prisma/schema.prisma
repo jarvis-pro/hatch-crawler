@@ -36,6 +36,27 @@ enum EventLevel {
   @@map("event_level")
 }
 
+enum AttachmentKind {
+  video
+  audio
+  image
+  archive
+  document
+  other
+
+  @@map("attachment_kind")
+}
+
+enum AttachmentStatus {
+  queued
+  downloading
+  transcoding
+  completed
+  failed
+
+  @@map("attachment_status")
+}
+
 // ──────────────────────────────────────────────────────────
 // spiders —— 注册的 Spider 定义
 // ──────────────────────────────────────────────────────────
@@ -56,6 +77,8 @@ model Spider {
   emitsKinds        Json     @default("[]") @map("emits_kinds")
   // Phase A：Spider 运行时参数默认值（channelId / query 等）
   defaultParams     Json     @default("{}") @map("default_params")
+  // RFC 0002 Phase A：是否在 run 完成后自动派发该 spider 产出 item 的附件下载
+  autoDownload      Boolean  @default(false) @map("auto_download")
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt         DateTime @default(now()) @map("updated_at") @db.Timestamp(6)
 
@@ -80,6 +103,11 @@ model Run {
   emitted  Int @default(0)
   newItems Int @default(0) @map("new_items")
   errors   Int @default(0)
+
+  // RFC 0002 Phase A：附件下载聚合统计（看板展示用）
+  attachmentsQueued    Int @default(0) @map("attachments_queued")
+  attachmentsCompleted Int @default(0) @map("attachments_completed")
+  attachmentsFailed    Int @default(0) @map("attachments_failed")
 
   startedAt    DateTime? @map("started_at") @db.Timestamp(6)
   finishedAt   DateTime? @map("finished_at") @db.Timestamp(6)
@@ -134,7 +162,8 @@ model Item {
   kind        String?  @db.VarChar(16)
   sourceId    String?  @map("source_id") @db.VarChar(128)
 
-  run Run? @relation(fields: [runId], references: [id], onDelete: SetNull)
+  run         Run?         @relation(fields: [runId], references: [id], onDelete: SetNull)
+  attachments Attachment[]
 
   @@unique([spider, urlHash, contentHash], map: "uniq_items_spider_url_content")
   @@index([spider, type], map: "idx_items_spider_type")
@@ -142,6 +171,47 @@ model Item {
   @@index([kind], map: "idx_items_kind")
   @@index([platform], map: "idx_items_platform")
   @@map("items")
+}
+
+// ──────────────────────────────────────────────────────────
+// attachments —— 抓取的二进制（视频/音频/zip 等），与 item 多对一
+// 详细设计见 docs/rfcs/0002-media-downloads.md
+// ──────────────────────────────────────────────────────────
+
+model Attachment {
+  id           String           @id @default(uuid()) @db.Uuid
+  itemId       Int              @map("item_id")
+  spider       String           @db.VarChar(64) // 冗余便于按 spider 清理
+  // 内容
+  kind         AttachmentKind
+  mimeType     String?          @map("mime_type") @db.VarChar(128)
+  sourceUrl    String           @map("source_url")
+  fetcherKind  String           @map("fetcher_kind") @db.VarChar(16) // 'http' | 'yt-dlp'
+  // 文件落地
+  storagePath  String?          @map("storage_path")
+  byteSize     BigInt?          @map("byte_size")
+  sha256       String?          @db.Char(64)
+  // 转码派生
+  parentId     String?          @map("parent_id") @db.Uuid
+  transcodeOp  String?          @map("transcode_op") @db.VarChar(32)
+  // 状态机
+  status       AttachmentStatus @default(queued)
+  progressPct  Int?             @map("progress_pct")
+  errorMessage String?          @map("error_message")
+  // 审计
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamp(6)
+  startedAt    DateTime?        @map("started_at") @db.Timestamp(6)
+  finishedAt   DateTime?        @map("finished_at") @db.Timestamp(6)
+
+  item    Item         @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  parent  Attachment?  @relation("transcode", fields: [parentId], references: [id], onDelete: SetNull)
+  derived Attachment[] @relation("transcode")
+
+  @@unique([spider, sha256], map: "uniq_attachments_spider_sha256")
+  @@index([itemId], map: "idx_attachments_item")
+  @@index([spider, status], map: "idx_attachments_spider_status")
+  @@index([status, createdAt], map: "idx_attachments_status_created")
+  @@map("attachments")
 }
 
 // ──────────────────────────────────────────────────────────

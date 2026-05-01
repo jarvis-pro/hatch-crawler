@@ -38,4 +38,28 @@ export const env = {
       '0000000000000000000000000000000000000000000000000000000000000000'
     );
   },
+  /**
+   * 文件存储后端：local（默认）。RFC 0002 留位，未来可扩 's3' 等。
+   */
+  get storageBackend(): 'local' {
+    const v = process.env.STORAGE_BACKEND ?? 'local';
+    if (v !== 'local') throw new Error(`STORAGE_BACKEND only supports 'local' for now, got: ${v}`);
+    return v;
+  },
+  /**
+   * 本地文件存储根目录（绝对路径或相对于 cwd）。默认 ./data。
+   */
+  get storageLocalRoot(): string {
+    return process.env.STORAGE_LOCAL_ROOT ?? './data';
+  },
+  /**
+   * RFC 0002 D-5：附件总存储上限（GB）。超过后新下载会被入队前拒绝。
+   * 默认 50GB；设为 0 或负数表示不限制。
+   */
+  get storageMaxGB(): number {
+    const raw = process.env.STORAGE_MAX_GB;
+    if (!raw) return 50;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : 50;
+  },
 };
