@@ -19,6 +19,10 @@ interface Ctx {
 const querySchema = z.object({
   url: z.string().url(),
   fetcher: z.enum(['http', 'ytdlp']).default('http'),
+  /** ytdlp 专用：仅提取音频（输出 mp3） */
+  audioOnly: z.coerce.boolean().default(false),
+  /** ytdlp 专用：视频清晰度上限，不传则取最佳 */
+  quality: z.enum(['best', '1080p', '720p', '480p', '360p']).default('best'),
 });
 
 /**
@@ -48,10 +52,10 @@ export async function GET(req: Request, { params }: Ctx): Promise<Response> {
     const parsed = querySchema.safeParse(rawQuery);
     if (!parsed.success) return failValidation(parsed.error);
 
-    const { url: sourceUrl, fetcher } = parsed.data;
+    const { url: sourceUrl, fetcher, audioOnly, quality } = parsed.data;
 
     if (fetcher === 'ytdlp') {
-      return streamYtdlp(sourceUrl, req.signal);
+      return streamYtdlp(sourceUrl, req.signal, { audioOnly, quality });
     }
     return streamHttp(sourceUrl, req.signal);
   } catch (err) {
@@ -103,26 +107,63 @@ function streamHttp(sourceUrl: string, signal: AbortSignal): Response {
   return new Response(webStream, { headers });
 }
 
+type VideoQuality = 'best' | '1080p' | '720p' | '480p' | '360p';
+
+/** 清晰度 → yt-dlp format 字符串 */
+const QUALITY_FORMAT: Record<VideoQuality, string> = {
+  best: 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+  '1080p':
+    'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best[height<=1080]',
+  '720p':
+    'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]',
+  '480p':
+    'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][ext=mp4]/best[height<=480]',
+  '360p':
+    'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/best[height<=360][ext=mp4]/best[height<=360]',
+};
+
+interface YtdlpOptions {
+  audioOnly: boolean;
+  quality: VideoQuality;
+}
+
 /** yt-dlp：下载到临时文件，完成后流式返回给浏览器 */
-async function streamYtdlp(sourceUrl: string, signal: AbortSignal): Promise<Response> {
+async function streamYtdlp(
+  sourceUrl: string,
+  signal: AbortSignal,
+  opts: YtdlpOptions,
+): Promise<Response> {
   const tmpId = Math.random().toString(36).slice(2);
   const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), `hatch-ytdlp-${tmpId}-`));
 
-  const args = [
-    '-f',
-    'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-    '--merge-output-format',
-    'mp4',
-    '--no-playlist',
-    '--no-warnings',
-    '-o',
-    path.join(tmpDir, `out.%(ext)s`),
-    sourceUrl,
-  ];
+  const args = opts.audioOnly
+    ? [
+        '-x',
+        '--audio-format',
+        'mp3',
+        '--audio-quality',
+        '0',
+        '--no-playlist',
+        '--no-warnings',
+        '-o',
+        path.join(tmpDir, `out.%(ext)s`),
+        sourceUrl,
+      ]
+    : [
+        '-f',
+        QUALITY_FORMAT[opts.quality] ?? QUALITY_FORMAT.best,
+        '--merge-output-format',
+        'mp4',
+        '--no-playlist',
+        '--no-warnings',
+        '-o',
+        path.join(tmpDir, `out.%(ext)s`),
+        sourceUrl,
+      ];
 
   try {
     await new Promise<void>((resolve, reject) => {
-      const p = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+      const p = spawn('yt-dlp', args, { stdio: 'pipe' });
       let stderrTail = '';
 
       p.stderr?.on('data', (b: Buffer) => {
