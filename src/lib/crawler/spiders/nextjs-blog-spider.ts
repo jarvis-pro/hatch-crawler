@@ -21,6 +21,9 @@ export class NextJsBlogSpider extends BaseSpider {
   override readonly maxDepth = 2;
   override readonly startUrls = [{ url: 'https://nextjs.org/blog', type: 'index' }];
 
+  /** Phase 5：平台标识 */
+  readonly platform = 'nextjs-blog';
+
   private readonly allowedHost = 'nextjs.org';
 
   override async parse(ctx: SpiderContext): Promise<void> {
@@ -35,8 +38,16 @@ export class NextJsBlogSpider extends BaseSpider {
     ctx.emit({
       url,
       type: ctx.type,
+      // Phase 5：多平台标记
+      platform: this.platform,
+      kind: 'article',
+      sourceId: url,
       payload: {
-        title: meta.title,
+        platform: this.platform,
+        kind: 'article',
+        sourceId: url,
+        url,
+        title: meta.title ?? '',
         description: meta.description,
         og: meta.og,
         // pageProps is where Next.js puts the structured data for the page

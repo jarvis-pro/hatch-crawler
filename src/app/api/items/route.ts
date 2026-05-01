@@ -10,6 +10,8 @@ export async function GET(req: Request): Promise<Response> {
     const type = url.searchParams.get('type') ?? undefined;
     const runId = url.searchParams.get('runId') ?? undefined;
     const q = url.searchParams.get('q') ?? undefined;
+    const platform = url.searchParams.get('platform') ?? undefined;
+    const kind = url.searchParams.get('kind') ?? undefined;
     const page = Number(url.searchParams.get('page') ?? '1');
     const pageSize = Number(url.searchParams.get('pageSize') ?? '20');
 
@@ -19,6 +21,8 @@ export async function GET(req: Request): Promise<Response> {
       type,
       runId,
       q,
+      platform,
+      kind,
       page: Number.isFinite(page) ? page : 1,
       pageSize: Number.isFinite(pageSize) ? pageSize : 20,
     });
