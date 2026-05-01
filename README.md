@@ -80,7 +80,7 @@ hatch-crawler/
 ### 一键起完整看板（推荐，Docker Compose）
 
 ```bash
-cp .env.docker.example .env
+cp .env.example .env   # 已经有 .env 就跳过
 docker compose up --build
 # 等到 hatch-web 日志出现 "[instrumentation] migrations done"
 open http://localhost:3000

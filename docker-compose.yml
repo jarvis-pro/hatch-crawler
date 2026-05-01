@@ -1,7 +1,7 @@
 # hatch-crawler v1 的本地一键起。
 #
 # 使用：
-#   cp .env.docker.example .env
+#   cp .env.example .env  # 已经有 .env 就跳过
 #   docker compose up --build
 #   open http://localhost:3000
 #

@@ -8,7 +8,7 @@
 ```bash
 git clone <repo>
 cd hatch-crawler
-cp .env.docker.example .env     # 默认值开箱可用
+cp .env.example .env            # 默认值开箱可用，已有 .env 就跳过
 docker compose up --build
 ```
 
@@ -32,7 +32,7 @@ http://localhost:3000
 
 ## 环境变量
 
-`.env` 字段（来自 `.env.docker.example`）：
+`.env` 字段（来自合并后的 `.env.example`，docker compose 只挑下面这几个用）：
 
 | 变量                | 默认值  | 说明             |
 | ------------------- | ------- | ---------------- |
@@ -40,6 +40,9 @@ http://localhost:3000
 | `POSTGRES_USER`     | `hatch` | 账户             |
 | `POSTGRES_PASSWORD` | `hatch` | 密码（生产请改） |
 | `LOG_LEVEL`         | `info`  | pino 日志级别    |
+
+> `.env` 里的 `DATABASE_URL` 是给"本地直接 `pnpm dev`"用的；
+> docker compose 不消费它，会在 web 容器内用上面三个 `POSTGRES_*` 重新拼出 host=postgres 的连接串。
 
 `web` 容器内使用：
 
