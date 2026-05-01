@@ -9,6 +9,10 @@ import { XhsSearchSpider } from '@/lib/crawler/platforms/xhs/spiders/search';
 import { XhsUserNotesSpider } from '@/lib/crawler/platforms/xhs/spiders/user-notes';
 import { XhsNoteDetailSpider } from '@/lib/crawler/platforms/xhs/spiders/note-detail';
 import { XhsNoteCommentsSpider } from '@/lib/crawler/platforms/xhs/spiders/note-comments';
+import { WeiboSearchSpider } from '@/lib/crawler/platforms/weibo/spiders/search';
+import { WeiboUserPostsSpider } from '@/lib/crawler/platforms/weibo/spiders/user-posts';
+import { DouyinSearchSpider } from '@/lib/crawler/platforms/douyin/spiders/search';
+import { DouyinUserVideosSpider } from '@/lib/crawler/platforms/douyin/spiders/user-videos';
 
 /**
  * Spider 注册表：name → 入口描述。
@@ -68,6 +72,22 @@ export const SPIDER_REGISTRY: Record<string, SpiderEntry> = {
   'xhs-note-comments': {
     factory: (params) => new XhsNoteCommentsSpider(params),
     platform: 'xhs',
+  },
+  'weibo-search': {
+    factory: (params) => new WeiboSearchSpider(params),
+    platform: 'weibo',
+  },
+  'weibo-user-posts': {
+    factory: (params) => new WeiboUserPostsSpider(params),
+    platform: 'weibo',
+  },
+  'douyin-search': {
+    factory: (params) => new DouyinSearchSpider(params),
+    platform: 'douyin',
+  },
+  'douyin-user-videos': {
+    factory: (params) => new DouyinUserVideosSpider(params),
+    platform: 'douyin',
   },
 };
 
