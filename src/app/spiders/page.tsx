@@ -183,6 +183,50 @@ const SPIDER_PARAM_SCHEMAS: Record<string, ParamField[]> = {
     },
     { key: 'maxPages', label: '最多翻页数', type: 'number', defaultValue: 20 },
   ],
+  'weibo-search': [
+    {
+      key: 'query',
+      label: '搜索关键词',
+      required: true,
+      placeholder: '人工智能',
+    },
+    { key: 'maxPages', label: '最多翻页数', type: 'number', defaultValue: 5 },
+    { key: 'delayMs', label: '请求间隔（ms）', type: 'number', defaultValue: 1500 },
+  ],
+  'weibo-user-posts': [
+    {
+      key: 'uid',
+      label: '用户 UID',
+      required: true,
+      placeholder: '1234567890',
+      hint: '微博个人主页 URL weibo.com/u/{uid} 中的纯数字 UID',
+    },
+    { key: 'maxPages', label: '最多翻页数', type: 'number', defaultValue: 10 },
+    { key: 'delayMs', label: '请求间隔（ms）', type: 'number', defaultValue: 1500 },
+  ],
+  'douyin-search': [
+    {
+      key: 'keyword',
+      label: '搜索关键词',
+      required: true,
+      placeholder: '美食探店',
+    },
+    { key: 'maxPages', label: '最多翻页数', type: 'number', defaultValue: 5 },
+    { key: 'pageSize', label: '每页数量', type: 'number', defaultValue: 10 },
+    { key: 'delayMs', label: '请求间隔（ms）', type: 'number', defaultValue: 2000 },
+  ],
+  'douyin-user-videos': [
+    {
+      key: 'secUid',
+      label: '用户 sec_uid',
+      required: true,
+      placeholder: 'MS4wLjABAAAA...',
+      hint: '抖音个人主页 URL douyin.com/user/{sec_uid} 中的长字符串',
+    },
+    { key: 'maxPages', label: '最多翻页数', type: 'number', defaultValue: 10 },
+    { key: 'pageSize', label: '每页数量', type: 'number', defaultValue: 18 },
+    { key: 'delayMs', label: '请求间隔（ms）', type: 'number', defaultValue: 2000 },
+  ],
 };
 
 /** 根据注册名推荐显示名 */
@@ -197,6 +241,10 @@ const SPIDER_DISPLAY_NAMES: Record<string, string> = {
   'xhs-note-detail': '小红书笔记详情',
   'xhs-note-comments': '小红书笔记评论',
   'bilibili-video-detail': 'Bilibili 视频详情',
+  'weibo-search': '微博搜索',
+  'weibo-user-posts': '微博用户微博',
+  'douyin-search': '抖音搜索',
+  'douyin-user-videos': '抖音用户视频',
 };
 
 const PLATFORM_BADGE: Record<string, string> = {
@@ -390,12 +438,38 @@ function NewSpiderDialog({
   const [displayName, setDisplayName] = useState(SPIDER_DISPLAY_NAMES[firstName] ?? firstName);
   const [enabled, setEnabled] = useState(true);
   const [params, setParams] = useState<Record<string, unknown>>(defaultParamsFor(firstName));
+  // JSON 导入面板
+  const [showImport, setShowImport] = useState(false);
+  const [importJson, setImportJson] = useState('');
+  const [importError, setImportError] = useState('');
 
   const handleTypeChange = (name: string) => {
     setSelectedName(name);
     setDisplayName(SPIDER_DISPLAY_NAMES[name] ?? name);
     setParams(defaultParamsFor(name));
   };
+
+  function handleImport() {
+    setImportError('');
+    try {
+      const obj = JSON.parse(importJson) as Record<string, unknown>;
+      const name = String(obj.name ?? '');
+      if (name && registry.some((e) => e.name === name)) {
+        setSelectedName(name);
+        setDisplayName(String(obj.displayName ?? SPIDER_DISPLAY_NAMES[name] ?? name));
+      }
+      if (obj.displayName) setDisplayName(String(obj.displayName));
+      if (typeof obj.enabled === 'boolean') setEnabled(obj.enabled);
+      if (obj.defaultParams && typeof obj.defaultParams === 'object') {
+        setParams(obj.defaultParams as Record<string, unknown>);
+      }
+      setShowImport(false);
+      setImportJson('');
+      toast.success('配置已导入');
+    } catch {
+      setImportError('JSON 解析失败，请检查格式');
+    }
+  }
 
   // 从注册表条目里取 platform，自动写入 DB
   const selectedEntry = registry.find((e) => e.name === selectedName);
@@ -424,61 +498,101 @@ function NewSpiderDialog({
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>新建 Spider</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 py-2">
-          {/* Spider 类型 */}
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Spider 类型</label>
-            <select
-              value={selectedName}
-              onChange={(e) => handleTypeChange(e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          <DialogTitle className="flex items-center justify-between pr-6">
+            新建 Spider
+            <button
+              type="button"
+              onClick={() => {
+                setShowImport((v) => !v);
+                setImportError('');
+              }}
+              className="text-xs font-normal text-muted-foreground underline underline-offset-2 hover:text-foreground"
             >
-              {registry.map((e) => (
-                <option key={e.name} value={e.name}>
-                  {SPIDER_DISPLAY_NAMES[e.name] ?? e.name}
-                  {e.platform ? ` (${e.platform})` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
+              {showImport ? '手动填写' : '从 JSON 导入'}
+            </button>
+          </DialogTitle>
+        </DialogHeader>
 
-          {/* 显示名称 */}
-          <div className="space-y-1">
-            <label className="text-sm font-medium">显示名称</label>
-            <Input
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="My Spider"
+        {showImport ? (
+          /* ── JSON 导入面板 ── */
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              粘贴从 Spider 详情页导出的 JSON 配置文件内容：
+            </p>
+            <textarea
+              className="h-48 w-full rounded-md border border-input bg-background p-2 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+              placeholder='{"name": "youtube-search", "displayName": "...", "defaultParams": {...}}'
+              value={importJson}
+              onChange={(e) => setImportJson(e.target.value)}
             />
+            {importError && <p className="text-xs text-destructive">{importError}</p>}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowImport(false)}>
+                取消
+              </Button>
+              <Button disabled={!importJson.trim()} onClick={handleImport}>
+                解析并填入
+              </Button>
+            </div>
           </div>
+        ) : (
+          /* ── 手动填写表单 ── */
+          <>
+            <div className="space-y-4 py-2">
+              {/* Spider 类型 */}
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Spider 类型</label>
+                <select
+                  value={selectedName}
+                  onChange={(e) => handleTypeChange(e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  {registry.map((e) => (
+                    <option key={e.name} value={e.name}>
+                      {SPIDER_DISPLAY_NAMES[e.name] ?? e.name}
+                      {e.platform ? ` (${e.platform})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-          {/* 默认参数 */}
-          <div className="space-y-1">
-            <label className="text-sm font-medium">默认参数（运行时可覆盖）</label>
-            <ParamsForm spiderName={selectedName} value={params} onChange={setParams} />
-          </div>
+              {/* 显示名称 */}
+              <div className="space-y-1">
+                <label className="text-sm font-medium">显示名称</label>
+                <Input
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="My Spider"
+                />
+              </div>
 
-          {/* 启用 */}
-          <label className="flex cursor-pointer items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={enabled}
-              onChange={(e) => setEnabled(e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300"
-            />
-            启用（立即可运行）
-          </label>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            取消
-          </Button>
-          <Button disabled={save.isPending || !valid} onClick={() => save.mutate()}>
-            {save.isPending ? '保存中…' : '保存'}
-          </Button>
-        </DialogFooter>
+              {/* 默认参数 */}
+              <div className="space-y-1">
+                <label className="text-sm font-medium">默认参数（运行时可覆盖）</label>
+                <ParamsForm spiderName={selectedName} value={params} onChange={setParams} />
+              </div>
+
+              {/* 启用 */}
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={enabled}
+                  onChange={(e) => setEnabled(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                启用（立即可运行）
+              </label>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={onClose}>
+                取消
+              </Button>
+              <Button disabled={save.isPending || !valid} onClick={() => save.mutate()}>
+                {save.isPending ? '保存中…' : '保存'}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
