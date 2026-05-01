@@ -8,11 +8,11 @@ const map: Record<
     variant: 'secondary' | 'info' | 'success' | 'destructive' | 'warning';
   }
 > = {
-  queued: { label: 'queued', variant: 'secondary' },
-  running: { label: 'running', variant: 'info' },
-  completed: { label: 'completed', variant: 'success' },
-  failed: { label: 'failed', variant: 'destructive' },
-  stopped: { label: 'stopped', variant: 'warning' },
+  queued: { label: '排队中', variant: 'secondary' },
+  running: { label: '运行中', variant: 'info' },
+  completed: { label: '已完成', variant: 'success' },
+  failed: { label: '已失败', variant: 'destructive' },
+  stopped: { label: '已停止', variant: 'warning' },
 };
 
 export function RunStatusBadge({ status }: { status: RunStatus }) {

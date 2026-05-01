@@ -5,12 +5,12 @@ import { Bug, Database, Download, LayoutDashboard, ListChecks, Settings } from '
 import { cn } from '@/lib/utils';
 
 const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/spiders', label: 'Spiders', icon: Bug },
-  { href: '/runs', label: 'Runs', icon: ListChecks },
-  { href: '/items', label: 'Items', icon: Database },
-  { href: '/attachments', label: 'Attachments', icon: Download },
-  { href: '/settings', label: 'Settings', icon: Settings },
+  { href: '/dashboard', label: '仪表盘', icon: LayoutDashboard },
+  { href: '/spiders', label: '爬虫', icon: Bug },
+  { href: '/runs', label: '任务', icon: ListChecks },
+  { href: '/items', label: '数据', icon: Database },
+  { href: '/attachments', label: '附件', icon: Download },
+  { href: '/settings', label: '设置', icon: Settings },
 ];
 
 export function Sidebar() {

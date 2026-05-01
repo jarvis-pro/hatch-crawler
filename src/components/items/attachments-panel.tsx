@@ -18,12 +18,29 @@ import { Input } from '@/components/ui/input';
 
 const KIND_OPTIONS = ['video', 'audio', 'image', 'archive', 'document', 'other'] as const;
 
+const KIND_LABEL: Record<string, string> = {
+  video: '视频',
+  audio: '音频',
+  image: '图片',
+  archive: '压缩包',
+  document: '文档',
+  other: '其他',
+};
+
 const STATUS_BADGE: Record<string, string> = {
   queued: 'bg-gray-100 text-gray-700',
   downloading: 'bg-blue-100 text-blue-800',
   transcoding: 'bg-purple-100 text-purple-800',
   completed: 'bg-green-100 text-green-800',
   failed: 'bg-red-100 text-red-700',
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  queued: '排队中',
+  downloading: '下载中',
+  transcoding: '转码中',
+  completed: '已完成',
+  failed: '已失败',
 };
 
 function fmtBytes(n: number | null): string {
@@ -136,9 +153,11 @@ function AttachmentRow({
             <span
               className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[attachment.status] ?? 'bg-gray-100 text-gray-700'}`}
             >
-              {attachment.status}
+              {STATUS_LABEL[attachment.status] ?? attachment.status}
             </span>
-            <span className="rounded bg-background px-1.5 py-0.5 text-xs">{attachment.kind}</span>
+            <span className="rounded bg-background px-1.5 py-0.5 text-xs">
+              {KIND_LABEL[attachment.kind] ?? attachment.kind}
+            </span>
             <span className="rounded bg-background px-1.5 py-0.5 text-xs text-muted-foreground">
               {attachment.fetcherKind}
             </span>
@@ -294,7 +313,7 @@ function NewDownloadDialog({ itemId, onCreated }: { itemId: number; onCreated: (
             >
               {KIND_OPTIONS.map((k) => (
                 <option key={k} value={k}>
-                  {k}
+                  {KIND_LABEL[k] ?? k}
                 </option>
               ))}
             </select>

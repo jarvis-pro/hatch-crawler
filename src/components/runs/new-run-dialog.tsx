@@ -70,13 +70,11 @@ export function NewRunDialog({ trigger }: { trigger: React.ReactNode }) {
                 <div className="font-medium">{s.displayName}</div>
                 <div className="text-xs text-muted-foreground">{s.name}</div>
               </div>
-              {!s.enabled && <span className="text-xs text-muted-foreground">disabled</span>}
+              {!s.enabled && <span className="text-xs text-muted-foreground">已禁用</span>}
             </label>
           ))}
           {spiders?.length === 0 && (
-            <div className="text-sm text-muted-foreground">
-              暂无 Spider，请先去 Spiders 页创建。
-            </div>
+            <div className="text-sm text-muted-foreground">暂无爬虫，请先去「爬虫」页创建。</div>
           )}
         </div>
         <DialogFooter>

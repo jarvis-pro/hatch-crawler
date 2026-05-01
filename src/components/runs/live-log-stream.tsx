@@ -24,19 +24,19 @@ const levelColor: Record<EventLevel, string> = {
 function describe(e: CrawlerEvent): string {
   switch (e.type) {
     case 'fetched':
-      return `fetched ${e.url} → ${String(e.status)} (${String(e.durationMs)}ms)`;
+      return `已抓取 ${e.url} → ${String(e.status)} (${String(e.durationMs)}ms)`;
     case 'queued':
-      return `queued ${e.url} (depth ${String(e.depth)})`;
+      return `已入队 ${e.url}（深度 ${String(e.depth)}）`;
     case 'skipped':
-      return `skipped ${e.url} (${e.reason})`;
+      return `已跳过 ${e.url}（${e.reason}）`;
     case 'emitted':
-      return `emitted ${e.itemType}: ${e.url}${e.isNew ? '' : ' (dup)'}`;
+      return `已输出 ${e.itemType}: ${e.url}${e.isNew ? '' : '（重复）'}`;
     case 'fetch_failed':
-      return `fetch failed: ${e.url} — ${e.error}`;
+      return `抓取失败: ${e.url} — ${e.error}`;
     case 'error':
-      return `error: ${e.message}`;
+      return `错误: ${e.message}`;
     case 'done':
-      return `done`;
+      return `已完成`;
     default:
       return e.type;
   }
