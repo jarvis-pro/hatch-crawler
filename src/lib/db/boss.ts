@@ -15,7 +15,8 @@ export const QUEUE_TRANSCODE = 'transcode';
 
 export interface CrawlJobData {
   runId: string;
-  spider: string;
+  /** spiders.id UUID */
+  spiderId: string;
   overrides?: Record<string, unknown>;
 }
 

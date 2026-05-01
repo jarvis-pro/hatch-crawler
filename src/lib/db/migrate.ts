@@ -230,6 +230,70 @@ END $$`,
   `ALTER TABLE "runs" ADD COLUMN IF NOT EXISTS "attachments_queued" integer NOT NULL DEFAULT 0`,
   `ALTER TABLE "runs" ADD COLUMN IF NOT EXISTS "attachments_completed" integer NOT NULL DEFAULT 0`,
   `ALTER TABLE "runs" ADD COLUMN IF NOT EXISTS "attachments_failed" integer NOT NULL DEFAULT 0`,
+
+  // ── Spider UUID 主键重构 ──────────────────────────────────────────────────────
+  // 旧设计：spiders.name 为 PK，spiderType 存注册表键。
+  // 新设计：spiders.id UUID 为 PK，name 即为注册表键（允许同类型多实例）。
+
+  // 1. spiders 加 id 列（带 DEFAULT，添加时对所有存量行自动赋 UUID）
+  `ALTER TABLE "spiders" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid()`,
+
+  // 2. runs 加 spider_id 列
+  `ALTER TABLE "runs" ADD COLUMN IF NOT EXISTS "spider_id" uuid`,
+
+  // 3. 回填 runs.spider_id（按 spider_name 匹配 spiders.name，幂等）
+  `UPDATE "runs" r
+   SET "spider_id" = s."id"
+   FROM "spiders" s
+   WHERE r."spider_name" = s."name"
+     AND r."spider_id" IS NULL`,
+
+  // 4. 删除 runs.spider_name 上的旧 FK 约束（幂等）
+  `ALTER TABLE "runs" DROP CONSTRAINT IF EXISTS "runs_spider_name_fkey"`,
+
+  // 5. spiders 主键重建：id SET NOT NULL + DROP old PK + ADD new PK（幂等 DO 块）
+  `DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint c
+    JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+    WHERE c.conrelid = 'spiders'::regclass
+      AND c.contype = 'p'
+      AND a.attname = 'id'
+  ) THEN
+    ALTER TABLE "spiders" ALTER COLUMN "id" SET NOT NULL;
+    ALTER TABLE "spiders" DROP CONSTRAINT IF EXISTS "spiders_pkey";
+    ALTER TABLE "spiders" ADD PRIMARY KEY ("id");
+  END IF;
+END $$`,
+
+  // 6. runs.spider_id FK 约束（幂等 DO 块）
+  `DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'runs_spider_id_fkey'
+      AND conrelid = 'runs'::regclass
+  ) THEN
+    ALTER TABLE "runs" ADD CONSTRAINT "runs_spider_id_fkey"
+      FOREIGN KEY ("spider_id") REFERENCES "spiders"("id") ON DELETE CASCADE;
+  END IF;
+END $$`,
+
+  // 7. runs.spider_id 索引（幂等）
+  `CREATE INDEX IF NOT EXISTS "idx_runs_spider_id" ON "runs" ("spider_id")`,
+
+  // ── displayName → name 重构：name 升级为用户自定义显示名，新增 type 为注册表键 ──────
+  // 1. 加 type 列（存放注册表类型键，如 "youtube-search"）
+  `ALTER TABLE "spiders" ADD COLUMN IF NOT EXISTS "type" varchar(64) NOT NULL DEFAULT ''`,
+  // 2. 回填 type = 旧 name（注册表键），仅对 type 仍为空字符串的行执行，幂等
+  `UPDATE "spiders" SET "type" = "name" WHERE "type" = ''`,
+  // 3. 回填 name = 旧 display_name（用户标签），仅对 name 仍等于 type（尚未迁移）的行执行，幂等
+  `UPDATE "spiders" SET "name" = "display_name" WHERE "name" = "type" AND "type" != ''`,
+  // 4. name 列扩宽至 128，支持中文长名
+  `ALTER TABLE "spiders" ALTER COLUMN "name" TYPE varchar(128)`,
+  // 5. runs.spider_name 同步扩宽（存放 spider 显示名，中文可能较长）
+  `ALTER TABLE "runs" ALTER COLUMN "spider_name" TYPE varchar(128)`,
+  // 6. display_name 列保留但设默认值，避免新增行报 NOT NULL 错误
+  `ALTER TABLE "spiders" ALTER COLUMN "display_name" SET DEFAULT ''`,
 ];
 
 export interface MigrateResult {

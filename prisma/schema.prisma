@@ -62,11 +62,12 @@ enum AttachmentStatus {
 // ──────────────────────────────────────────────────────────
 
 model Spider {
-  name              String   @id @db.VarChar(64)
-  /// 注册表中的 Spider 类型键（如 "youtube-channel-videos"）。
-  /// name 是用户自定义的唯一标识符，spiderType 才是对应的引擎实现。
-  spiderType        String   @default("") @map("spider_type") @db.VarChar(64)
-  displayName       String   @map("display_name") @db.VarChar(128)
+  /// UUID 主键，由数据库自动生成
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// 用户自定义显示名称（中文友好，如 "YouTube 搜索 - 健身"），可重复
+  name              String   @db.VarChar(128)
+  /// 注册表类型键（如 "youtube-channel-videos"），worker 靠此反查实现类
+  type              String   @db.VarChar(64)
   description       String?
   startUrls         Json     @map("start_urls")
   allowedHosts      Json     @default("[]") @map("allowed_hosts")
@@ -97,6 +98,8 @@ model Spider {
 model Run {
   id          String    @id @default(uuid()) @db.Uuid
   spiderName  String    @map("spider_name") @db.VarChar(64)
+  /// FK 引用 spiders.id，nullable 兼容历史数据
+  spiderId    String?   @map("spider_id") @db.Uuid
   status      RunStatus @default(queued)
   triggerType String    @map("trigger_type") @db.VarChar(16)
   overrides   Json?     @default("{}")
@@ -118,12 +121,13 @@ model Run {
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
 
-  spider Spider  @relation(fields: [spiderName], references: [name], onDelete: Cascade)
+  spider Spider? @relation(fields: [spiderId], references: [id], onDelete: Cascade)
   events Event[]
   items  Item[]
 
   @@index([status], map: "idx_runs_status")
   @@index([spiderName, createdAt], map: "idx_runs_spider")
+  @@index([spiderId], map: "idx_runs_spider_id")
   @@map("runs")
 }
 

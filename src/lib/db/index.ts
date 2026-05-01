@@ -47,18 +47,31 @@ export { RunStatus, EventLevel, AttachmentKind, AttachmentStatus } from '@prisma
  * Prisma 把 jsonb 列推断成 `JsonValue`；这里把已知形状的 jsonb 收紧成业务类型，
  * 让 repository / 调用方少写一道 cast。写入时这些字段会被 Prisma 接受为 InputJson。
  */
-export type Spider = Omit<PrismaSpider, 'startUrls' | 'allowedHosts' | 'defaultParams'> & {
+export type Spider = Omit<
+  PrismaSpider,
+  'startUrls' | 'allowedHosts' | 'defaultParams' | 'displayName'
+> & {
+  /**
+   * UUID 主键。prisma generate 运行后由 PrismaSpider 自动提供；
+   * 这里显式声明保证 generate 前也能编译。
+   */
+  id: string;
+  /**
+   * 注册表类型键（如 "youtube-search"）。prisma generate 运行后由 PrismaSpider 提供；
+   * 这里显式声明保证 generate 前也能编译。
+   */
+  type: string;
   startUrls: string[];
   allowedHosts: string[];
   defaultParams: Record<string, unknown>;
-  /**
-   * 注册表类型键（如 "youtube-channel-videos"）。
-   * prisma generate 运行后由 PrismaSpider 自动提供；这里显式声明保证 generate 前也能编译。
-   */
-  spiderType: string;
 };
 
 export type Run = Omit<PrismaRun, 'overrides'> & {
+  /**
+   * FK 引用 spiders.id（nullable：历史数据可能无对应 spider）。
+   * prisma generate 运行后由 PrismaRun 自动提供；这里显式声明保证 generate 前也能编译。
+   */
+  spiderId: string | null;
   overrides: Record<string, unknown> | null;
 };
 
@@ -85,10 +98,10 @@ export type Attachment = Omit<PrismaAttachment, 'byteSize'> & {
 
 // repository create-input 速记
 export type NewSpider = {
+  /** 注册表类型键（如 "youtube-search"），worker 靠此反查实现类 */
+  type: string;
+  /** 用户自定义显示名称（中文友好），可重复 */
   name: string;
-  /** 注册表中的 Spider 类型键，不传时回退为 name（向后兼容）。 */
-  spiderType?: string;
-  displayName: string;
   description?: string | null;
   startUrls: string[];
   allowedHosts?: string[];
@@ -104,6 +117,9 @@ export type NewSpider = {
 };
 
 export type NewRun = {
+  /** spiders.id UUID，作为 FK */
+  spiderId: string;
+  /** 冗余存储 spider.name（注册表类型键），便于查询与展示 */
   spiderName: string;
   triggerType: string;
   overrides?: Record<string, unknown>;

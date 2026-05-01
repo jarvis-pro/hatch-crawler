@@ -1,122 +1,187 @@
 import type { Db } from '../client';
 import type { NewSpider, Spider } from '../index';
 
-function shape(row: {
-  startUrls: unknown;
-  allowedHosts: unknown;
-  defaultParams?: unknown;
-  [k: string]: unknown;
-}): Spider {
+/**
+ * spiders 仓储层。
+ *
+ * Prisma generate 尚未更新前，id 列不在生成的 client 类型里，
+ * 因此全部使用原始 SQL，避免 Prisma client 运行时校验报错。
+ */
+
+interface RawRow {
+  id: string;
+  name: string;
+  type: string;
+  description: string | null;
+  start_urls: unknown;
+  allowed_hosts: unknown;
+  max_depth: number;
+  concurrency: number;
+  per_host_interval_ms: number;
+  enabled: boolean;
+  cron_schedule: string | null;
+  platform: string | null;
+  emits_kinds: unknown;
+  default_params: unknown;
+  auto_download: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
+const SELECT_COLS = `
+  "id", "name", "type", "description",
+  "start_urls", "allowed_hosts",
+  "max_depth", "concurrency", "per_host_interval_ms",
+  "enabled", "cron_schedule", "platform", "emits_kinds",
+  "default_params", "auto_download",
+  "created_at", "updated_at"
+`.trim();
+
+function shape(row: RawRow): Spider {
   return {
-    ...row,
-    startUrls: row.startUrls as string[],
-    allowedHosts: row.allowedHosts as string[],
-    defaultParams: (row.defaultParams ?? {}) as Record<string, unknown>,
-    // spiderType 由调用方在 spread 前注入（Prisma generate 前 client 不认识该列）
-    spiderType: (row.spiderType as string | undefined) ?? (row.name as string),
+    id: row.id,
+    name: row.name,
+    type: row.type,
+    description: row.description ?? null,
+    startUrls: (row.start_urls as string[]) ?? [],
+    allowedHosts: (row.allowed_hosts as string[]) ?? [],
+    maxDepth: row.max_depth ?? 2,
+    concurrency: row.concurrency ?? 4,
+    perHostIntervalMs: row.per_host_interval_ms ?? 500,
+    enabled: row.enabled ?? true,
+    cronSchedule: row.cron_schedule ?? null,
+    platform: row.platform ?? null,
+    emitsKinds: (row.emits_kinds as string[]) ?? [],
+    defaultParams: (row.default_params as Record<string, unknown>) ?? {},
+    autoDownload: row.auto_download ?? false,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   } as Spider;
 }
 
-/**
- * 用原始 SQL 批量取 spider_type，返回 name → spiderType 映射。
- * Prisma generate 运行后该函数可退役，由 Prisma client 直接读取。
- */
-async function fetchSpiderTypes(db: Db, names?: string[]): Promise<Map<string, string>> {
-  const rows =
-    names && names.length > 0
-      ? await db.$queryRawUnsafe<{ name: string; spider_type: string }[]>(
-          `SELECT "name", "spider_type" FROM "spiders" WHERE "name" = ANY($1::text[])`,
-          names,
-        )
-      : await db.$queryRawUnsafe<{ name: string; spider_type: string }[]>(
-          `SELECT "name", "spider_type" FROM "spiders"`,
-        );
-  return new Map(rows.map((r) => [r.name, r.spider_type ?? r.name]));
-}
-
 export async function listAll(db: Db): Promise<Spider[]> {
-  const rows = await db.spider.findMany({ orderBy: { name: 'asc' } });
-  const typeMap = await fetchSpiderTypes(
-    db,
-    rows.map((r) => r.name),
+  const rows = await db.$queryRawUnsafe<RawRow[]>(
+    `SELECT ${SELECT_COLS} FROM "spiders" ORDER BY "name" ASC, "display_name" ASC`,
   );
-  return rows.map((row) => shape({ ...row, spiderType: typeMap.get(row.name) ?? row.name }));
+  return rows.map(shape);
 }
 
+export async function getById(db: Db, id: string): Promise<Spider | null> {
+  const rows = await db.$queryRawUnsafe<RawRow[]>(
+    `SELECT ${SELECT_COLS} FROM "spiders" WHERE "id" = $1`,
+    id,
+  );
+  return rows[0] ? shape(rows[0]) : null;
+}
+
+/** @deprecated worker / 旧代码兼容；新代码应使用 getById */
 export async function getByName(db: Db, name: string): Promise<Spider | null> {
-  const row = await db.spider.findUnique({ where: { name } });
-  if (!row) return null;
-  const typeMap = await fetchSpiderTypes(db, [name]);
-  return shape({ ...row, spiderType: typeMap.get(name) ?? name });
-}
-
-export async function upsert(db: Db, input: NewSpider): Promise<Spider> {
-  const spiderType = input.spiderType ?? input.name;
-
-  // spiderType 不放入 base：Prisma generate 运行前 client 不认识 spider_type 列，
-  // 放进去会在运行时抛 "Unknown argument" 错误。改为 upsert 后单独用原始 SQL 写入。
-  const base = {
-    displayName: input.displayName,
-    description: input.description ?? null,
-    startUrls: input.startUrls,
-    allowedHosts: input.allowedHosts ?? [],
-    maxDepth: input.maxDepth ?? 2,
-    concurrency: input.concurrency ?? 4,
-    perHostIntervalMs: input.perHostIntervalMs ?? 500,
-    enabled: input.enabled ?? true,
-    cronSchedule: input.cronSchedule ?? null,
-    platform: input.platform ?? null,
-    defaultParams: input.defaultParams ?? {},
-    autoDownload: input.autoDownload ?? false,
-  };
-
-  // defaultParams 列在 Prisma generate 前类型不存在，用宽松 cast
-  const row = (await (db.spider.upsert as (args: unknown) => Promise<unknown>)({
-    where: { name: input.name },
-    create: { name: input.name, ...base },
-    update: { ...base, updatedAt: new Date() },
-  })) as Parameters<typeof shape>[0];
-
-  // spider_type 列在 db:generate 前 Prisma client 不识别，单独用原始 SQL 写入
-  await db.$executeRawUnsafe(
-    `UPDATE "spiders" SET "spider_type" = $1 WHERE "name" = $2`,
-    spiderType,
-    input.name,
+  const rows = await db.$queryRawUnsafe<RawRow[]>(
+    `SELECT ${SELECT_COLS} FROM "spiders" WHERE "name" = $1 LIMIT 1`,
+    name,
   );
-
-  return shape({ ...row, spiderType });
+  return rows[0] ? shape(rows[0]) : null;
 }
 
-export async function remove(db: Db, name: string): Promise<void> {
-  await db.spider.delete({ where: { name } });
+export async function create(db: Db, input: NewSpider): Promise<Spider> {
+  const rows = await db.$queryRawUnsafe<RawRow[]>(
+    `INSERT INTO "spiders" (
+      "name", "type", "display_name", "description",
+      "start_urls", "allowed_hosts",
+      "max_depth", "concurrency", "per_host_interval_ms",
+      "enabled", "cron_schedule", "platform",
+      "default_params", "auto_download"
+    ) VALUES (
+      $1, $2, $1, $3,
+      $4::jsonb, $5::jsonb,
+      $6, $7, $8,
+      $9, $10, $11,
+      $12::jsonb, $13
+    ) RETURNING ${SELECT_COLS}`,
+    input.name,
+    input.type,
+    input.description ?? null,
+    JSON.stringify(input.startUrls ?? []),
+    JSON.stringify(input.allowedHosts ?? []),
+    input.maxDepth ?? 2,
+    input.concurrency ?? 4,
+    input.perHostIntervalMs ?? 500,
+    input.enabled ?? true,
+    input.cronSchedule ?? null,
+    input.platform ?? null,
+    JSON.stringify(input.defaultParams ?? {}),
+    input.autoDownload ?? false,
+  );
+  if (!rows[0]) throw new Error('spider insert returned no row');
+  return shape(rows[0]);
+}
+
+export async function update(db: Db, id: string, input: NewSpider): Promise<Spider> {
+  const rows = await db.$queryRawUnsafe<RawRow[]>(
+    `UPDATE "spiders" SET
+      "name"                 = $1,
+      "type"                 = $2,
+      "display_name"         = $1,
+      "description"          = $3,
+      "start_urls"           = $4::jsonb,
+      "allowed_hosts"        = $5::jsonb,
+      "max_depth"            = $6,
+      "concurrency"          = $7,
+      "per_host_interval_ms" = $8,
+      "enabled"              = $9,
+      "cron_schedule"        = $10,
+      "platform"             = $11,
+      "default_params"       = $12::jsonb,
+      "auto_download"        = $13,
+      "updated_at"           = now()
+    WHERE "id" = $14
+    RETURNING ${SELECT_COLS}`,
+    input.name,
+    input.type,
+    input.description ?? null,
+    JSON.stringify(input.startUrls ?? []),
+    JSON.stringify(input.allowedHosts ?? []),
+    input.maxDepth ?? 2,
+    input.concurrency ?? 4,
+    input.perHostIntervalMs ?? 500,
+    input.enabled ?? true,
+    input.cronSchedule ?? null,
+    input.platform ?? null,
+    JSON.stringify(input.defaultParams ?? {}),
+    input.autoDownload ?? false,
+    id,
+  );
+  if (!rows[0]) throw new Error(`spider not found: ${id}`);
+  return shape(rows[0]);
+}
+
+export async function remove(db: Db, id: string): Promise<void> {
+  await db.$executeRawUnsafe(`DELETE FROM "spiders" WHERE "id" = $1`, id);
 }
 
 /**
  * 连续失败次数 +1，并返回更新后的次数。
  * 超过 maxAllowed 时同时把 enabled 置为 false（自动停用）。
- * 返回 { consecutiveFailures, disabled }
  */
 export async function recordFailure(
   db: Db,
-  name: string,
+  id: string,
   maxAllowed: number,
 ): Promise<{ consecutiveFailures: number; disabled: boolean }> {
-  // 用 $executeRawUnsafe 递增（Prisma 类型尚未生成该列）
   await db.$executeRawUnsafe(
-    `UPDATE "spiders" SET "consecutive_failures" = "consecutive_failures" + 1 WHERE "name" = $1`,
-    name,
+    `UPDATE "spiders" SET "consecutive_failures" = "consecutive_failures" + 1 WHERE "id" = $1`,
+    id,
   );
 
-  // 读回最新值
   const rows = await db.$queryRawUnsafe<{ cf: number }[]>(
-    `SELECT "consecutive_failures" AS cf FROM "spiders" WHERE "name" = $1`,
-    name,
+    `SELECT "consecutive_failures" AS cf FROM "spiders" WHERE "id" = $1`,
+    id,
   );
   const cf = rows[0]?.cf ?? 1;
 
   let disabled = false;
   if (cf >= maxAllowed) {
-    await db.$executeRawUnsafe(`UPDATE "spiders" SET "enabled" = false WHERE "name" = $1`, name);
+    await db.$executeRawUnsafe(`UPDATE "spiders" SET "enabled" = false WHERE "id" = $1`, id);
     disabled = true;
   }
 
@@ -126,9 +191,6 @@ export async function recordFailure(
 /**
  * 运行成功后将连续失败次数重置为 0。
  */
-export async function resetFailures(db: Db, name: string): Promise<void> {
-  await db.$executeRawUnsafe(
-    `UPDATE "spiders" SET "consecutive_failures" = 0 WHERE "name" = $1`,
-    name,
-  );
+export async function resetFailures(db: Db, id: string): Promise<void> {
+  await db.$executeRawUnsafe(`UPDATE "spiders" SET "consecutive_failures" = 0 WHERE "id" = $1`, id);
 }
