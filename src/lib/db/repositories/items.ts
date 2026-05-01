@@ -197,6 +197,22 @@ export async function getById(db: Db, id: number): Promise<Item | null> {
 }
 
 /**
+ * 将 patch 对象合并到 item 的 jsonb payload（浅合并，等价于 payload || patch）。
+ * 用于事后补充格式信息等场景。
+ */
+export async function patchPayload(
+  db: Db,
+  id: number,
+  patch: Record<string, unknown>,
+): Promise<void> {
+  await db.$executeRawUnsafe(
+    `UPDATE "items" SET "payload" = "payload" || $1::jsonb WHERE "id" = $2`,
+    JSON.stringify(patch),
+    id,
+  );
+}
+
+/**
  * 批量删除指定 id 列表的条目。
  * 返回实际删除行数。
  */
