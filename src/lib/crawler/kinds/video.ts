@@ -44,6 +44,26 @@ export const VideoItem = z.object({
       }),
     )
     .optional(),
+  /**
+   * 抓取时由 yt-dlp --dump-json 解析的可用格式信息。
+   * 存在时，下载 UI 按此列表动态生成选项；不存在时回退静态预设。
+   */
+  videoFormats: z
+    .object({
+      /** 可用视频格式，降序排列 */
+      formats: z.array(
+        z.object({
+          height: z.number().int().positive(),
+          /** 预估总大小（字节，视频+音频之和，仅供参考） */
+          size: z.number().int().positive().optional(),
+        }),
+      ),
+      /** 是否有独立音频流 */
+      hasAudio: z.boolean(),
+      /** 最优音频流预估大小（字节） */
+      audioSize: z.number().int().positive().optional(),
+    })
+    .optional(),
   raw: z.record(z.unknown()).optional(),
 });
 

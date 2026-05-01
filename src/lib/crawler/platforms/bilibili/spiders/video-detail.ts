@@ -19,6 +19,7 @@ import { buildVideoDetailUrl, BILI_HEADERS } from '../helpers';
 import type { BiliVideoDetailResponse } from '../parsers';
 import { videoDetailToPayload } from '../parsers';
 import { logger } from '../../../utils/logger';
+import { fetchVideoFormats } from '../../../utils/yt-dlp-formats';
 
 // 导入平台注册副作用
 import '../index';
@@ -101,9 +102,17 @@ export class BilibiliVideoDetailSpider extends BaseSpider {
       return;
     }
 
+    const videoUrl = `https://www.bilibili.com/video/${bvid}`;
     const payload = videoDetailToPayload(resp.data);
+
+    // 尝试通过 yt-dlp 获取可用格式列表（失败时静默跳过，不影响主流程）
+    const videoFormats = await fetchVideoFormats(videoUrl).catch(() => null);
+    if (videoFormats) {
+      (payload as Record<string, unknown>).videoFormats = videoFormats;
+    }
+
     ctx.emit({
-      url: `https://www.bilibili.com/video/${bvid}`,
+      url: videoUrl,
       type: 'video',
       platform: 'bilibili',
       kind: 'video',
