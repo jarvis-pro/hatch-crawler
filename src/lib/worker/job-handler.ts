@@ -1,5 +1,5 @@
 import 'server-only';
-import { type Db, eventRepo, runRepo, accountRepo } from '@/lib/db';
+import { type Db, eventRepo, runRepo, accountRepo, settingRepo } from '@/lib/db';
 import { runSpider, setCrawlerConfig } from '@/lib/crawler';
 import type { CrawlerEvent, EventLevel } from '@/lib/shared';
 import type { CrawlJobData } from '@/lib/db';
@@ -63,6 +63,12 @@ export async function handleCrawlJob(
     if (cookie) spiderParams.cookie = cookie;
   }
 
+  // 注入代理列表（从 settings 表的 proxy_pool key 读取）
+  const proxyList = await settingRepo.get<string[]>(db, 'proxy_pool').catch(() => null);
+  if (Array.isArray(proxyList) && proxyList.length > 0) {
+    spiderParams.proxyUrls = proxyList;
+  }
+
   // 桥接事件：写 events 表（异步）+ 推 EventBus（同步给 SSE）
   const onEvent = (event: CrawlerEvent): void => {
     publish(runId, event);
@@ -98,16 +104,46 @@ export async function handleCrawlJob(
     const storage = new PostgresStorage(db, runId);
     await runSpider(spiderInstance, { storage, onEvent, signal });
 
-    if (signal.aborted) {
-      await runRepo.markFinished(db, runId, 'stopped');
-    } else {
-      await runRepo.markFinished(db, runId, 'completed');
-    }
+    const finalStatus = signal.aborted ? 'stopped' : 'completed';
+    await runRepo.markFinished(db, runId, finalStatus);
+    void notifyWebhook(db, runId, spider, finalStatus).catch(() => {});
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await runRepo.markFinished(db, runId, 'failed', message);
+    void notifyWebhook(db, runId, spider, 'failed', message).catch(() => {});
     throw err;
   }
+}
+
+/**
+ * 向配置的 Webhook URL 发送运行结果通知。
+ * 失败时静默忽略，不影响主流程。
+ */
+async function notifyWebhook(
+  db: Db,
+  runId: string,
+  spider: string,
+  status: string,
+  errorMessage?: string,
+): Promise<void> {
+  const webhookUrl = await settingRepo.get<string>(db, 'webhook_url').catch(() => null);
+  if (!webhookUrl || typeof webhookUrl !== 'string') return;
+
+  const body = JSON.stringify({
+    event: 'run_finished',
+    runId,
+    spider,
+    status,
+    ...(errorMessage ? { errorMessage } : {}),
+    at: new Date().toISOString(),
+  });
+
+  await fetch(webhookUrl, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body,
+    signal: AbortSignal.timeout(10_000),
+  });
 }
 
 function extractMessage(event: CrawlerEvent): string {
