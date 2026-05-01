@@ -69,17 +69,17 @@ model Spider {
 // ──────────────────────────────────────────────────────────
 
 model Run {
-  id           String    @id @default(uuid()) @db.Uuid
-  spiderName   String    @map("spider_name") @db.VarChar(64)
-  status       RunStatus @default(queued)
-  triggerType  String    @map("trigger_type") @db.VarChar(16)
-  overrides    Json?     @default("{}")
+  id          String    @id @default(uuid()) @db.Uuid
+  spiderName  String    @map("spider_name") @db.VarChar(64)
+  status      RunStatus @default(queued)
+  triggerType String    @map("trigger_type") @db.VarChar(16)
+  overrides   Json?     @default("{}")
 
   // 统计字段，worker 增量更新
-  fetched   Int @default(0)
-  emitted   Int @default(0)
-  newItems  Int @default(0) @map("new_items")
-  errors    Int @default(0)
+  fetched  Int @default(0)
+  emitted  Int @default(0)
+  newItems Int @default(0) @map("new_items")
+  errors   Int @default(0)
 
   startedAt    DateTime? @map("started_at") @db.Timestamp(6)
   finishedAt   DateTime? @map("finished_at") @db.Timestamp(6)
@@ -181,17 +181,22 @@ enum AccountStatus {
 }
 
 model Account {
-  id           Int           @id @default(autoincrement())
-  platform     String        @db.VarChar(32)
-  label        String        @db.VarChar(64)
-  kind         AccountKind
-  payloadEnc   String        @map("payload_enc") @db.Text
-  expiresAt    DateTime?     @map("expires_at") @db.Timestamp(6)
-  status       AccountStatus @default(active)
-  lastUsedAt   DateTime?     @map("last_used_at") @db.Timestamp(6)
-  failureCount Int           @default(0) @map("failure_count")
-  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt    DateTime      @default(now()) @map("updated_at") @db.Timestamp(6)
+  id             Int           @id @default(autoincrement())
+  platform       String        @db.VarChar(32)
+  label          String        @db.VarChar(64)
+  kind           AccountKind
+  payloadEnc     String        @map("payload_enc") @db.Text
+  expiresAt      DateTime?     @map("expires_at") @db.Timestamp(6)
+  status         AccountStatus @default(active)
+  lastUsedAt     DateTime?     @map("last_used_at") @db.Timestamp(6)
+  failureCount   Int           @default(0) @map("failure_count")
+  // Phase D：健康度监控
+  lastTestedAt   DateTime?     @map("last_tested_at") @db.Timestamp(6)
+  lastTestOk     Boolean?      @map("last_test_ok")
+  quotaUsedToday Int           @default(0) @map("quota_used_today")
+  quotaResetAt   DateTime      @default(now()) @map("quota_reset_at") @db.Date
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt      DateTime      @default(now()) @map("updated_at") @db.Timestamp(6)
 
   @@index([platform, status], map: "idx_accounts_platform_status")
   @@map("accounts")

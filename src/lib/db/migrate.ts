@@ -167,6 +167,12 @@ END $$`,
   "updated_at" timestamp NOT NULL DEFAULT now()
 )`,
   `CREATE INDEX IF NOT EXISTS "idx_accounts_platform_status" ON "accounts" ("platform", "status")`,
+
+  // ── Phase D：accounts 健康度列 ────────────────────────────────────────────
+  `ALTER TABLE "accounts" ADD COLUMN IF NOT EXISTS "last_tested_at" timestamp`,
+  `ALTER TABLE "accounts" ADD COLUMN IF NOT EXISTS "last_test_ok" boolean`,
+  `ALTER TABLE "accounts" ADD COLUMN IF NOT EXISTS "quota_used_today" integer NOT NULL DEFAULT 0`,
+  `ALTER TABLE "accounts" ADD COLUMN IF NOT EXISTS "quota_reset_at" date NOT NULL DEFAULT CURRENT_DATE`,
 ];
 
 export interface MigrateResult {
