@@ -45,7 +45,8 @@ export class XhsUserNotesSpider extends BaseSpider {
     this.pageSize = Math.min(Number(params?.pageSize ?? 18), 18);
     this.cookie = String(params?.cookie ?? '');
     // 签名（含 cookie）在 parse() 里每次请求单独计算后通过 extraHeaders 传入
-    this.client = new ApiClient({ perRequestDelayMs: 1500 });
+    const proxyUrls = Array.isArray(params?.proxyUrls) ? (params.proxyUrls as string[]) : undefined;
+    this.client = new ApiClient({ perRequestDelayMs: 1500, proxyUrls });
   }
 
   override get startUrls(): ReadonlyArray<{ url: string; type?: string }> {

@@ -50,7 +50,8 @@ export class XhsSearchSpider extends BaseSpider {
     this.sort = (params?.sort as typeof this.sort) ?? 'general';
     this.noteType = (params?.noteType as typeof this.noteType) ?? 0;
     this.cookie = String(params?.cookie ?? '');
-    this.client = new ApiClient({ perRequestDelayMs: 1500 });
+    const proxyUrls = Array.isArray(params?.proxyUrls) ? (params.proxyUrls as string[]) : undefined;
+    this.client = new ApiClient({ perRequestDelayMs: 1500, proxyUrls });
   }
 
   override get startUrls(): ReadonlyArray<{ url: string; type?: string }> {

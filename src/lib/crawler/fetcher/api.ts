@@ -1,6 +1,7 @@
 import got, { type Got } from 'got';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { logger } from '../utils/logger';
+import { ProxyPool } from '../middleware/proxy-pool';
 
 export interface ApiClientOptions {
   /** 每次请求之间的最小间隔（毫秒），防止触发 429 */
@@ -11,6 +12,8 @@ export interface ApiClientOptions {
   timeoutMs?: number;
   /** 追加到每个请求的固定 headers */
   defaultHeaders?: Record<string, string>;
+  /** 代理 URL 列表，传入后自动 round-robin；空数组或不传则直连 */
+  proxyUrls?: readonly string[];
 }
 
 export interface ApiResponse<T = unknown> {
@@ -32,11 +35,14 @@ export class ApiClient {
   private readonly client: Got;
   private readonly perRequestDelayMs: number;
   private readonly retryAttempts: number;
+  private readonly proxyPool: ProxyPool | null;
   private lastCallAt = 0;
 
   constructor(opts: ApiClientOptions = {}) {
     this.perRequestDelayMs = opts.perRequestDelayMs ?? 200;
     this.retryAttempts = opts.retryAttempts ?? 3;
+    this.proxyPool =
+      opts.proxyUrls && opts.proxyUrls.length > 0 ? new ProxyPool(opts.proxyUrls) : null;
 
     this.client = got.extend({
       timeout: { request: opts.timeoutMs ?? 15_000 },
@@ -79,8 +85,12 @@ export class ApiClient {
     let lastErr: unknown;
     for (let attempt = 1; attempt <= this.retryAttempts; attempt++) {
       await this.throttle();
+      const proxy = this.proxyPool?.next() ?? null;
       try {
-        const res = await this.client.get(fullUrl, { headers: extraHeaders });
+        const res = await this.client.get(fullUrl, {
+          headers: extraHeaders,
+          ...(proxy ? { agent: { https: proxy.agent } } : {}),
+        });
 
         if (res.statusCode === 429) {
           const backoff = Math.min(1000 * 2 ** attempt, 30_000);
@@ -88,6 +98,8 @@ export class ApiClient {
           await sleep(backoff);
           continue;
         }
+
+        if (proxy) this.proxyPool?.reportSuccess(proxy.url);
 
         let data: T;
         try {
@@ -98,6 +110,7 @@ export class ApiClient {
 
         return { status: res.statusCode, data, headers: res.headers };
       } catch (err) {
+        if (proxy) this.proxyPool?.reportFailure(proxy.url);
         lastErr = err;
         const backoff = Math.min(500 * 2 ** attempt, 10_000);
         logger.warn(
@@ -126,10 +139,12 @@ export class ApiClient {
     let lastErr: unknown;
     for (let attempt = 1; attempt <= this.retryAttempts; attempt++) {
       await this.throttle();
+      const proxy = this.proxyPool?.next() ?? null;
       try {
         const res = await this.client.post(url, {
           body,
           headers: extraHeaders,
+          ...(proxy ? { agent: { https: proxy.agent } } : {}),
         });
 
         if (res.statusCode === 429) {
@@ -138,6 +153,8 @@ export class ApiClient {
           await sleep(backoff);
           continue;
         }
+
+        if (proxy) this.proxyPool?.reportSuccess(proxy.url);
 
         let data: T;
         try {
@@ -148,6 +165,7 @@ export class ApiClient {
 
         return { status: res.statusCode, data, headers: res.headers };
       } catch (err) {
+        if (proxy) this.proxyPool?.reportFailure(proxy.url);
         lastErr = err;
         const backoff = Math.min(500 * 2 ** attempt, 10_000);
         logger.warn(
