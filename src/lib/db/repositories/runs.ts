@@ -25,7 +25,7 @@ export async function create(db: Db, input: CreateRunInput): Promise<{ id: strin
   // spider_id 列在 Prisma generate 前不被 Prisma client 认识，用原始 SQL 写入
   const rows = await db.$queryRawUnsafe<{ id: string }[]>(
     `INSERT INTO "runs" ("spider_name", "spider_id", "trigger_type", "overrides")
-     VALUES ($1, $2, $3, $4::jsonb)
+     VALUES ($1, $2::uuid, $3, $4::jsonb)
      RETURNING "id"`,
     input.spiderName,
     input.spiderId,
@@ -124,11 +124,11 @@ export async function list(
     const countArgIdx = statuses ? statuses.length + 1 : 1;
     const [countResult, rows] = await Promise.all([
       db.$queryRawUnsafe<{ cnt: bigint }[]>(
-        `SELECT COUNT(*) AS cnt FROM "runs" r WHERE r.spider_id = $1 ${statusClause}`,
+        `SELECT COUNT(*) AS cnt FROM "runs" r WHERE r.spider_id = $1::uuid ${statusClause}`,
         ...countArgs,
       ),
       db.$queryRawUnsafe<(Parameters<typeof shape>[0] & { spider_id?: string })[]>(
-        `SELECT * FROM "runs" r WHERE r.spider_id = $1 ${statusClause}
+        `SELECT * FROM "runs" r WHERE r.spider_id = $1::uuid ${statusClause}
          ORDER BY r.created_at DESC LIMIT $${countArgIdx + 1} OFFSET $${countArgIdx + 2}`,
         ...rowArgs,
       ),

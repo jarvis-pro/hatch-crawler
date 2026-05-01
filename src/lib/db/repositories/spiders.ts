@@ -61,14 +61,14 @@ function shape(row: RawRow): Spider {
 
 export async function listAll(db: Db): Promise<Spider[]> {
   const rows = await db.$queryRawUnsafe<RawRow[]>(
-    `SELECT ${SELECT_COLS} FROM "spiders" ORDER BY "name" ASC, "display_name" ASC`,
+    `SELECT ${SELECT_COLS} FROM "spiders" ORDER BY "name" ASC`,
   );
   return rows.map(shape);
 }
 
 export async function getById(db: Db, id: string): Promise<Spider | null> {
   const rows = await db.$queryRawUnsafe<RawRow[]>(
-    `SELECT ${SELECT_COLS} FROM "spiders" WHERE "id" = $1`,
+    `SELECT ${SELECT_COLS} FROM "spiders" WHERE "id" = $1::uuid`,
     id,
   );
   return rows[0] ? shape(rows[0]) : null;
@@ -134,7 +134,7 @@ export async function update(db: Db, id: string, input: NewSpider): Promise<Spid
       "default_params"       = $12::jsonb,
       "auto_download"        = $13,
       "updated_at"           = now()
-    WHERE "id" = $14
+    WHERE "id" = $14::uuid
     RETURNING ${SELECT_COLS}`,
     input.name,
     input.type,
@@ -156,7 +156,7 @@ export async function update(db: Db, id: string, input: NewSpider): Promise<Spid
 }
 
 export async function remove(db: Db, id: string): Promise<void> {
-  await db.$executeRawUnsafe(`DELETE FROM "spiders" WHERE "id" = $1`, id);
+  await db.$executeRawUnsafe(`DELETE FROM "spiders" WHERE "id" = $1::uuid`, id);
 }
 
 /**
@@ -169,19 +169,19 @@ export async function recordFailure(
   maxAllowed: number,
 ): Promise<{ consecutiveFailures: number; disabled: boolean }> {
   await db.$executeRawUnsafe(
-    `UPDATE "spiders" SET "consecutive_failures" = "consecutive_failures" + 1 WHERE "id" = $1`,
+    `UPDATE "spiders" SET "consecutive_failures" = "consecutive_failures" + 1 WHERE "id" = $1::uuid`,
     id,
   );
 
   const rows = await db.$queryRawUnsafe<{ cf: number }[]>(
-    `SELECT "consecutive_failures" AS cf FROM "spiders" WHERE "id" = $1`,
+    `SELECT "consecutive_failures" AS cf FROM "spiders" WHERE "id" = $1::uuid`,
     id,
   );
   const cf = rows[0]?.cf ?? 1;
 
   let disabled = false;
   if (cf >= maxAllowed) {
-    await db.$executeRawUnsafe(`UPDATE "spiders" SET "enabled" = false WHERE "id" = $1`, id);
+    await db.$executeRawUnsafe(`UPDATE "spiders" SET "enabled" = false WHERE "id" = $1::uuid`, id);
     disabled = true;
   }
 
@@ -192,5 +192,8 @@ export async function recordFailure(
  * 运行成功后将连续失败次数重置为 0。
  */
 export async function resetFailures(db: Db, id: string): Promise<void> {
-  await db.$executeRawUnsafe(`UPDATE "spiders" SET "consecutive_failures" = 0 WHERE "id" = $1`, id);
+  await db.$executeRawUnsafe(
+    `UPDATE "spiders" SET "consecutive_failures" = 0 WHERE "id" = $1::uuid`,
+    id,
+  );
 }
