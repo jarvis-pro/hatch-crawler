@@ -54,3 +54,45 @@ export async function upsert(db: Db, input: NewSpider): Promise<Spider> {
 export async function remove(db: Db, name: string): Promise<void> {
   await db.spider.delete({ where: { name } });
 }
+
+/**
+ * 连续失败次数 +1，并返回更新后的次数。
+ * 超过 maxAllowed 时同时把 enabled 置为 false（自动停用）。
+ * 返回 { consecutiveFailures, disabled }
+ */
+export async function recordFailure(
+  db: Db,
+  name: string,
+  maxAllowed: number,
+): Promise<{ consecutiveFailures: number; disabled: boolean }> {
+  // 用 $executeRawUnsafe 递增（Prisma 类型尚未生成该列）
+  await db.$executeRawUnsafe(
+    `UPDATE "spiders" SET "consecutive_failures" = "consecutive_failures" + 1 WHERE "name" = $1`,
+    name,
+  );
+
+  // 读回最新值
+  const rows = await db.$queryRawUnsafe<{ cf: number }[]>(
+    `SELECT "consecutive_failures" AS cf FROM "spiders" WHERE "name" = $1`,
+    name,
+  );
+  const cf = rows[0]?.cf ?? 1;
+
+  let disabled = false;
+  if (cf >= maxAllowed) {
+    await db.$executeRawUnsafe(`UPDATE "spiders" SET "enabled" = false WHERE "name" = $1`, name);
+    disabled = true;
+  }
+
+  return { consecutiveFailures: cf, disabled };
+}
+
+/**
+ * 运行成功后将连续失败次数重置为 0。
+ */
+export async function resetFailures(db: Db, name: string): Promise<void> {
+  await db.$executeRawUnsafe(
+    `UPDATE "spiders" SET "consecutive_failures" = 0 WHERE "name" = $1`,
+    name,
+  );
+}

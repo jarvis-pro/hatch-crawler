@@ -398,11 +398,20 @@ function WebhookTab() {
     queryKey: ['setting', 'webhook_url'],
     queryFn: () => api.get<{ key: string; value: unknown }>('/api/settings/webhook_url'),
   });
+  const { data: maxFailData } = useQuery({
+    queryKey: ['setting', 'max_consecutive_failures'],
+    queryFn: () =>
+      api.get<{ key: string; value: unknown }>('/api/settings/max_consecutive_failures'),
+  });
 
   const [url, setUrl] = useState('');
+  const [maxFail, setMaxFail] = useState('');
 
   if (data && !url && typeof data.value === 'string' && data.value) {
     setUrl(data.value);
+  }
+  if (maxFailData && !maxFail) {
+    setMaxFail(String(maxFailData.value ?? '3'));
   }
 
   const save = useMutation({
@@ -415,6 +424,15 @@ function WebhookTab() {
     onError: (err) => toast.error(String(err)),
   });
 
+  const saveMaxFail = useMutation({
+    mutationFn: (v: number) => api.put('/api/settings/max_consecutive_failures', { value: v }),
+    onSuccess: () => {
+      toast.success('告警阈值已保存');
+      void qc.invalidateQueries({ queryKey: ['setting', 'max_consecutive_failures'] });
+    },
+    onError: (err) => toast.error(String(err)),
+  });
+
   const testWebhook = useMutation({
     mutationFn: () => api.post('/api/settings/webhook_test', {}),
     onSuccess: () => toast.success('测试通知已发送'),
@@ -422,39 +440,74 @@ function WebhookTab() {
   });
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>完成通知</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-sm text-muted-foreground">
-          每次 Spider 运行完成或失败时，向此 URL 发送 POST 请求（JSON payload）。
-          支持钉钉机器人、Slack Incoming Webhook、飞书机器人等。
-        </p>
-        <div className="space-y-1">
-          <label className="text-sm font-medium">Webhook URL</label>
-          <Input
-            placeholder="https://hooks.slack.com/services/..."
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-          />
-        </div>
-        <div className="flex justify-end gap-2">
-          {url && (
-            <Button
-              variant="outline"
-              disabled={testWebhook.isPending}
-              onClick={() => testWebhook.mutate()}
-            >
-              {testWebhook.isPending ? '发送中…' : '发送测试'}
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>完成通知</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            每次 Spider 运行完成或失败时，向此 URL 发送 POST 请求（JSON payload）。
+            支持钉钉机器人、Slack Incoming Webhook、飞书机器人等。
+          </p>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Webhook URL</label>
+            <Input
+              placeholder="https://hooks.slack.com/services/..."
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            {url && (
+              <Button
+                variant="outline"
+                disabled={testWebhook.isPending}
+                onClick={() => testWebhook.mutate()}
+              >
+                {testWebhook.isPending ? '发送中…' : '发送测试'}
+              </Button>
+            )}
+            <Button disabled={save.isPending} onClick={() => save.mutate(url)}>
+              {save.isPending ? '保存中…' : '保存'}
             </Button>
-          )}
-          <Button disabled={save.isPending} onClick={() => save.mutate(url)}>
-            {save.isPending ? '保存中…' : '保存'}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>失败告警</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Spider 连续失败达到阈值后，将自动停用（enabled = false）并通过 Webhook 推送告警。 设为 0
+            表示不自动停用。
+          </p>
+          <div className="flex items-center gap-3">
+            <label className="whitespace-nowrap text-sm font-medium">连续失败停用阈值</label>
+            <Input
+              type="number"
+              min={0}
+              className="w-24"
+              value={maxFail}
+              onChange={(e) => setMaxFail(e.target.value)}
+            />
+            <span className="text-sm text-muted-foreground">次</span>
+            <Button
+              size="sm"
+              disabled={saveMaxFail.isPending}
+              onClick={() => {
+                const n = parseInt(maxFail, 10);
+                if (!isNaN(n) && n >= 0) saveMaxFail.mutate(n);
+              }}
+            >
+              {saveMaxFail.isPending ? '保存中…' : '保存'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 

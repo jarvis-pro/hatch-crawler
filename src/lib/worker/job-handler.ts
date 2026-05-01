@@ -1,5 +1,5 @@
 import 'server-only';
-import { type Db, eventRepo, runRepo, accountRepo, settingRepo } from '@/lib/db';
+import { type Db, eventRepo, runRepo, accountRepo, settingRepo, spiderRepo } from '@/lib/db';
 import { runSpider, setCrawlerConfig } from '@/lib/crawler';
 import type { CrawlerEvent, EventLevel } from '@/lib/shared';
 import type { CrawlJobData } from '@/lib/db';
@@ -108,18 +108,52 @@ export async function handleCrawlJob(
     }
   };
 
+  // 读取连续失败告警阈值（默认 3）
+  const maxConsecutiveFailures = Number(
+    (await settingRepo.get<number>(db, 'max_consecutive_failures').catch(() => null)) ?? 3,
+  );
+
   try {
     const spiderInstance = entry.factory(spiderParams);
+
+    // 提前检查 startUrls，避免静默完成：若为空说明必填参数（如 apiKey / query / channelId）未配置
+    if (spiderInstance.startUrls.length === 0) {
+      throw new Error(
+        `spider "${spider}" 的 startUrls 为空——请检查平台凭据（Accounts 页）及必填参数是否已配置。`,
+      );
+    }
+
     const storage = new PostgresStorage(db, runId);
     await runSpider(spiderInstance, { storage, onEvent, signal });
 
     const finalStatus = signal.aborted ? 'stopped' : 'completed';
     await runRepo.markFinished(db, runId, finalStatus);
+
+    // 成功时重置连续失败计数
+    void spiderRepo.resetFailures(db, spider).catch(() => {});
     void notifyWebhook(db, runId, spider, finalStatus).catch(() => {});
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await runRepo.markFinished(db, runId, 'failed', message);
+
+    // 递增连续失败计数，超阈值自动停用并发送告警
+    const failureResult = await spiderRepo
+      .recordFailure(db, spider, maxConsecutiveFailures)
+      .catch(() => null);
+
     void notifyWebhook(db, runId, spider, 'failed', message).catch(() => {});
+
+    if (failureResult?.disabled) {
+      // 额外推送"停用告警"webhook
+      void notifyWebhook(
+        db,
+        runId,
+        spider,
+        'auto_disabled',
+        `连续失败 ${failureResult.consecutiveFailures} 次，已自动停用`,
+      ).catch(() => {});
+    }
+
     // 将失败记录到本次使用的账号（触发 failureCount 递增，超阈值自动 ban）
     for (const accountId of usedAccountIds) {
       void accountRepo.recordFailure(db, accountId).catch(() => {});
