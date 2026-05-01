@@ -51,4 +51,8 @@ export const api = {
     });
     return parse<T>(res);
   },
+  async delete<T>(url: string): Promise<T> {
+    const res = await fetch(url, { method: 'DELETE' });
+    return parse<T>(res);
+  },
 };

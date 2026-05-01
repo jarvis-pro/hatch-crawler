@@ -3,18 +3,54 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '@/lib/api-client';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+
+// ── AccountRow 类型（与 src/lib/db/repositories/accounts.ts 对齐）──────────────
+interface AccountRow {
+  id: number;
+  platform: string;
+  label: string;
+  kind: string;
+  expiresAt: string | null;
+  status: string;
+  lastUsedAt: string | null;
+  failureCount: number;
+  createdAt: string;
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  active: 'bg-green-100 text-green-800',
+  expired: 'bg-yellow-100 text-yellow-800',
+  banned: 'bg-red-100 text-red-800',
+  disabled: 'bg-gray-100 text-gray-600',
+};
+
+// ── Settings 页面 ─────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
   return (
-    <Tabs defaultValue="proxy">
+    <Tabs defaultValue="accounts">
       <TabsList>
+        <TabsTrigger value="accounts">凭据管理</TabsTrigger>
         <TabsTrigger value="proxy">代理池</TabsTrigger>
         <TabsTrigger value="ua">UA 池</TabsTrigger>
         <TabsTrigger value="defaults">默认参数</TabsTrigger>
       </TabsList>
+      <TabsContent value="accounts">
+        <AccountsTab />
+      </TabsContent>
       <TabsContent value="proxy">
         <SettingEditor settingKey="proxy_pool" />
       </TabsContent>
@@ -28,6 +64,223 @@ export default function SettingsPage() {
   );
 }
 
+// ── Accounts Tab ──────────────────────────────────────────────────────────────
+
+function AccountsTab() {
+  const qc = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+
+  const { data: accounts = [], isLoading } = useQuery({
+    queryKey: ['accounts'],
+    queryFn: () => api.get<AccountRow[]>('/api/accounts'),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: number) => api.delete(`/api/accounts/${id}`),
+    onSuccess: () => {
+      toast.success('已删除');
+      void qc.invalidateQueries({ queryKey: ['accounts'] });
+    },
+    onError: (err) => toast.error(String(err)),
+  });
+
+  const testAccount = useMutation({
+    mutationFn: (id: number) =>
+      api.post<{ valid: boolean; message: string }>(`/api/accounts/${id}/test`, {}),
+    onSuccess: (data) => {
+      if (data.valid) toast.success(data.message);
+      else toast.error(`验证失败：${data.message}`);
+    },
+    onError: (err) => toast.error(String(err)),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          平台凭据（API Key / Cookie）加密存储，用于 Spider 抓取时注入鉴权。
+        </p>
+        <Button size="sm" onClick={() => setShowForm((v) => !v)}>
+          {showForm ? '取消' : '+ 新增凭据'}
+        </Button>
+      </div>
+
+      {showForm && (
+        <AddAccountForm
+          onSuccess={() => {
+            setShowForm(false);
+            void qc.invalidateQueries({ queryKey: ['accounts'] });
+          }}
+        />
+      )}
+
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>平台</TableHead>
+                <TableHead>标签</TableHead>
+                <TableHead>类型</TableHead>
+                <TableHead>状态</TableHead>
+                <TableHead>失败次数</TableHead>
+                <TableHead>最近使用</TableHead>
+                <TableHead></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading && (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
+                    加载中…
+                  </TableCell>
+                </TableRow>
+              )}
+              {accounts.length === 0 && !isLoading && (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
+                    暂无凭据，点击"新增凭据"添加。
+                  </TableCell>
+                </TableRow>
+              )}
+              {accounts.map((acc) => (
+                <TableRow key={acc.id}>
+                  <TableCell className="font-mono text-xs">{acc.platform}</TableCell>
+                  <TableCell>{acc.label}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{acc.kind}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[acc.status] ?? ''}`}
+                    >
+                      {acc.status}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-xs">{acc.failureCount}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {acc.lastUsedAt ? new Date(acc.lastUsedAt).toLocaleString() : '—'}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-1">
+                      {acc.platform === 'youtube' && acc.kind === 'apikey' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={testAccount.isPending}
+                          onClick={() => testAccount.mutate(acc.id)}
+                        >
+                          测试
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={remove.isPending}
+                        onClick={() => {
+                          if (confirm(`确认删除凭据"${acc.label}"？`)) remove.mutate(acc.id);
+                        }}
+                      >
+                        删除
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ── 新增凭据表单 ──────────────────────────────────────────────────────────────
+
+function AddAccountForm({ onSuccess }: { onSuccess: () => void }) {
+  const [platform, setPlatform] = useState('youtube');
+  const [label, setLabel] = useState('');
+  const [kind, setKind] = useState<'apikey' | 'cookie' | 'oauth' | 'session'>('apikey');
+  const [payload, setPayload] = useState('');
+
+  const create = useMutation({
+    mutationFn: () => api.post('/api/accounts', { platform, label, kind, payload }),
+    onSuccess: () => {
+      toast.success('凭据已添加');
+      onSuccess();
+    },
+    onError: (err) => toast.error(String(err)),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">新增凭据</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-sm font-medium">平台</label>
+            <select
+              value={platform}
+              onChange={(e) => setPlatform(e.target.value)}
+              className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              <option value="youtube">YouTube</option>
+              <option value="bilibili">Bilibili</option>
+              <option value="xhs">小红书</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">类型</label>
+            <select
+              value={kind}
+              onChange={(e) => setKind(e.target.value as 'apikey' | 'cookie' | 'oauth' | 'session')}
+              className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              <option value="apikey">API Key</option>
+              <option value="cookie">Cookie</option>
+              <option value="oauth">OAuth Token</option>
+              <option value="session">Session</option>
+            </select>
+          </div>
+        </div>
+        <div className="space-y-1">
+          <label className="text-sm font-medium">标签（用于区分多个同平台账号）</label>
+          <Input
+            placeholder="如：work-account-1"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-sm font-medium">
+            {kind === 'apikey' ? 'API Key' : kind === 'cookie' ? 'Cookie 字符串' : 'Token'}
+          </label>
+          <Input
+            type="password"
+            placeholder={
+              kind === 'apikey' ? 'AIza...' : kind === 'cookie' ? '__Secure-SSID=...' : '粘贴 Token'
+            }
+            value={payload}
+            onChange={(e) => setPayload(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            凭据会使用 AES-256-GCM 加密后存入数据库，明文不会保留。
+          </p>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button disabled={create.isPending || !label || !payload} onClick={() => create.mutate()}>
+            {create.isPending ? '保存中…' : '保存'}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── 通用 Setting 编辑器（复用原有逻辑）────────────────────────────────────────
+
 function SettingEditor({ settingKey }: { settingKey: string }) {
   const qc = useQueryClient();
   const { data } = useQuery({
@@ -37,7 +290,6 @@ function SettingEditor({ settingKey }: { settingKey: string }) {
 
   const [text, setText] = useState<string>('');
 
-  // 初次加载时同步 textarea
   if (data && !text) {
     setText(JSON.stringify(data.value ?? {}, null, 2));
   }
