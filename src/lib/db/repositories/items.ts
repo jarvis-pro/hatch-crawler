@@ -44,7 +44,7 @@ export async function save(db: Db, input: SaveItemInput): Promise<{ isNew: boole
     const rows = await db.$queryRawUnsafe<{ is_new: boolean }[]>(
       `INSERT INTO "items"
          ("run_id","spider","type","url","url_hash","content_hash","payload","platform","kind","source_id")
-       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10)
+       VALUES ($1::uuid,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10)
        ON CONFLICT ("platform","source_id")
          WHERE "platform" IS NOT NULL AND "source_id" IS NOT NULL
        DO UPDATE SET
