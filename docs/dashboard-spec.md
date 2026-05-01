@@ -2,6 +2,9 @@
 
 > 描述每个页面的布局、组件、交互行为、用户旅程。
 > Next.js 15 App Router，Tailwind + shadcn/ui，TanStack Query。
+>
+> 页面源码：`src/app/<route>/page.tsx`；
+> 组件源码：`src/components/{ui,nav,runs,items,stats}/`。
 
 ## 信息架构
 
@@ -227,16 +230,17 @@
 
 ## 共享组件清单
 
-| 组件               | 用途                                             |
-| ------------------ | ------------------------------------------------ |
-| `<RunStatusBadge>` | queued/running/completed/failed/stopped 状态徽章 |
-| `<StatsCard>`      | dashboard 顶部统计卡片                           |
-| `<RunRow>`         | runs 列表的一行（多页复用）                      |
-| `<LiveLogStream>`  | SSE 接入的实时日志面板                           |
-| `<JsonViewer>`     | item payload 的 JSON 树展示                      |
-| `<PaginatedTable>` | 通用分页表格（runs / items）                     |
-| `<NewRunDialog>`   | 新建 Run 的 Modal                                |
-| `<EmptyState>`     | 空状态占位                                       |
+| 组件               | 路径                                       | 用途                                                  |
+| ------------------ | ------------------------------------------ | ----------------------------------------------------- |
+| `<RunStatusBadge>` | `src/components/runs/run-status-badge.tsx` | queued/running/completed/failed/stopped 状态徽章      |
+| `<StatsCard>`      | `src/components/stats/stats-card.tsx`      | dashboard 顶部统计卡片                                |
+| `<LiveLogStream>`  | `src/components/runs/live-log-stream.tsx`  | SSE 接入的实时日志面板                                |
+| `<NewRunDialog>`   | `src/components/runs/new-run-dialog.tsx`   | 新建 Run 的 Modal                                     |
+| `<JsonViewer>`     | `src/components/items/json-viewer.tsx`     | item payload 的 JSON 树展示                           |
+| Sidebar / Topbar   | `src/components/nav/{sidebar,topbar}.tsx`  | 全局布局                                              |
+| shadcn primitives  | `src/components/ui/*`                      | badge / button / card / dialog / input / table / tabs |
+
+> `<RunRow>` / `<PaginatedTable>` / `<EmptyState>` 目前直接在各 page 内联实现，待重复使用时再抽出。
 
 ## 用户旅程
 

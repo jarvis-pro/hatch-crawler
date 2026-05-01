@@ -12,7 +12,7 @@ cp .env.docker.example .env     # 默认值开箱可用
 docker compose up --build
 ```
 
-等到 `hatch-web` 日志出现 `[instrumentation] migrations done` + `[worker] started`，浏览器打开：
+等到 `hatch-web` 日志出现 `[instrumentation] migrations done`（后续 `startWorker()` 也会就绪），浏览器打开：
 
 ```
 http://localhost:3000
@@ -52,9 +52,9 @@ http://localhost:3000
 
 1. `postgres` 健康检查通过（`pg_isready`）
 2. `web` 启动：
-   - `instrumentation.ts` 触发 → `runMigrations()` 建业务表 + 启用 pgboss schema
+   - `src/instrumentation.ts` 在 Node runtime 触发 → `runMigrations()` 建业务表 + 启用 pgboss schema
    - `startWorker()` 拉起 pg-boss 消费 `crawl` 队列、清理 stale runs
-3. Next.js 监听 `:3000`
+3. Next.js 监听 `:3000`（`HOSTNAME=0.0.0.0`，由 standalone 启动 `node server.js`）
 
 整个过程**幂等**：重启 `web` 不会破坏数据，迁移会跳过已有表。
 
@@ -74,16 +74,15 @@ docker compose down -v   # ⚠️ 删除数据卷
 
 ## 添加示例 Spider 数据（可选）
 
-首次启动后表是空的。可以跑一次 seed 灌点种子数据：
+首次启动后表是空的。standalone 生产镜像不带 `scripts/`，所以 seed 走不通容器内执行。
+推荐方案：
 
-```bash
-docker compose exec web sh -c \
-  "DATABASE_URL=postgres://hatch:hatch@postgres/hatch node packages/db/scripts/seed.js" \
-  || echo "seed 脚本路径仅 dev 模式有；生产镜像里不带 scripts/，需另想办法"
-```
-
-> 上面这条在 standalone 镜像里其实跑不通——seed 脚本不会被打包。
-> 实际方案：在看板 `/spiders` 页面手工创建 Spider，或者跑一次 `pnpm --filter @hatch-crawler/db db:seed`（需要本地 dev 模式）。
+- 在看板 `/spiders` 页面手工创建 Spider；或
+- 在本地 dev 模式（连同一个 Postgres）跑：
+  ```bash
+  DATABASE_URL=postgres://hatch:hatch@localhost:5432/hatch pnpm db:seed
+  ```
+  脚本入口是仓库根 `scripts/db-seed.ts`。
 
 ## 排错
 
@@ -107,9 +106,13 @@ ports:
 
 ### 镜像构建失败：better-sqlite3 编译错
 
-`apps/web` 不需要 `better-sqlite3` 跑，只是 workspace 里 `packages/crawler` 把它列为依赖。镜像构建 `pnpm install` 会尝试编译。
+生产路径不会用到 `better-sqlite3`（仅 `src/lib/crawler/storage/sqlite-storage.ts` 在脱机调试时使用），
+但它列在 `package.json` 的 dependencies 里，镜像构建 `pnpm install` 会尝试编译。
 
-如果失败，临时方案：把 `package.json` 的 `pnpm.onlyBuiltDependencies` 列表里的 `better-sqlite3` 移到 `pnpm.allowedDeprecatedVersions` 或类似豁免位置。生产 v1 用不到 SQLite，未来可考虑把它从 `packages/crawler` 拎出来做单独的可选实现。
+Dockerfile 的 `deps` 阶段已经预装 `python3 / make / g++` 来编译它。
+如果还是挂掉，临时方案：把 `package.json` 的 `pnpm.onlyBuiltDependencies` 里的
+`better-sqlite3` 暂时移除（`pnpm install` 会跳过它的 native build），
+或者把 SQLite 实现拆成可选 dep。
 
 ### 迁移失败：`gen_random_uuid()` 不存在
 
@@ -121,7 +124,7 @@ Postgres 13+ 自带这个函数。我们用 `postgres:16-alpine` 没问题。
 通常是 Tailwind 没编译进 standalone 包。检查：
 
 ```bash
-docker compose exec web ls -la /app/apps/web/.next/static/css
+docker compose exec web ls -la /app/.next/static/css
 ```
 
 应该有几个 `.css` 文件。没有的话重新 `docker compose build web --no-cache`。
@@ -130,7 +133,7 @@ docker compose exec web ls -la /app/apps/web/.next/static/css
 
 当前 v1 的 Compose 配置满足"本地一键试用"，但暴露到公网前应该考虑：
 
-- **认证**：`apps/web` 接 NextAuth
+- **认证**：在 `src/app` 上接 NextAuth
 - **HTTPS**：前置 Caddy / Traefik 自动签证书
 - **Postgres 密码**：用 Docker secrets，而不是 `.env`
 - **资源限制**：`deploy.resources.limits` 限 CPU/内存
@@ -148,12 +151,12 @@ docker compose up postgres -d
 # 2. 本地装依赖
 pnpm install
 
-# 3. 创建 .env（apps/web 会读）
-cat > apps/web/.env.local <<EOF
+# 3. 创建 .env（Next.js 会读根目录的 .env.local）
+cat > .env.local <<EOF
 DATABASE_URL=postgres://hatch:hatch@localhost:5432/hatch
 LOG_LEVEL=debug
 EOF
 
-# 4. 启动 dev 模式（HMR）
-pnpm --filter @hatch-crawler/web dev
+# 4. 启动 dev 模式（HMR + Turbopack）
+pnpm dev
 ```

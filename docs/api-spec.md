@@ -1,7 +1,8 @@
 # API 规范
 
-> 所有 API 路由都在 `apps/web/app/api/`（Next.js App Router）。
-> JSON 入出，遵循统一错误格式。
+> 所有 API 路由都在 `src/app/api/`（Next.js App Router）。
+> SSE 通道单独放在 `src/app/sse/`。
+> JSON 入出，遵循统一错误格式（统一包装函数在 `src/lib/api/response.ts`）。
 
 ## 通用约定
 
@@ -249,7 +250,7 @@ Body: { "value": { "proxies": [
 ] } }
 ```
 
-校验逻辑根据 key 决定，统一在 `apps/web/lib/settings-schema.ts` 用 Zod 定义。
+校验逻辑根据 key 决定，按 key 分发的 Zod schema 由 settings 路由 (`src/app/api/settings/[key]/route.ts`) 自管。
 
 ---
 
@@ -332,12 +333,9 @@ es.addEventListener("done", () => es.close());
 
 ## 校验 schema 共享
 
-所有请求体的 Zod schema 放在 `packages/shared/src/schemas/`：
-
-- `runs.create.schema.ts` → `POST /api/runs` 入参
-- `spiders.update.schema.ts`
-- `settings.proxy-pool.schema.ts`
-- 等等
+请求体 Zod schema 与 API 路由代码并置（在每个 `src/app/api/.../route.ts` 文件
+顶部声明）。需要在前端复用时，可以从对应的 route 文件 re-export，或者集中放到
+`src/lib/shared/`（目前共享的主要是 `CrawlerEvent` 联合类型）。
 
 前端 `react-hook-form + zodResolver` 直接复用同一份 schema，省掉两边手抄。
 

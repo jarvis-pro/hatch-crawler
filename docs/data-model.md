@@ -51,7 +51,9 @@
 
 ## 表定义（Drizzle schema）
 
-下面是各表的 Drizzle 描述，将放在 `packages/db/src/schema.ts`。
+下面是各表的 Drizzle 描述，定义在 `src/lib/db/schema.ts`。
+所有表的运行时建表语句以 `src/lib/db/migrate.ts` 里的内联 SQL 为准
+（drizzle-kit 生成的迁移文件保留为可选路径，见下方"迁移策略"）。
 
 ### spiders
 
@@ -151,7 +153,7 @@ export const events = pgTable(
 ```
 
 > **注意**：events 表会快速膨胀。生产环境应配 retention（每天清理 7 天前数据）。
-> v1 简化处理：在 `apps/worker` 里只持久化 `info` 及以上级别，`debug` 不入库。
+> v1 简化处理：在 `src/lib/worker/job-handler.ts` 里只持久化 `info` 及以上级别，`debug` 不入库。
 
 ### items
 
@@ -240,10 +242,18 @@ export const settings = pgTable("settings", {
 
 ## 迁移策略
 
-- 用 Drizzle Kit：`drizzle-kit generate` 自动生成业务表 SQL
-- 迁移文件存在 `packages/db/migrations/`
-- `apps/web` 启动入口（Next.js `instrumentation.ts`）调一次 `migrate()` 即可（单进程，无需分布式锁）
-- pg-boss 的队列表由它自己用 `boss.start()` 时按需建出，不归我们管
+v1 实际运行路径（默认）：
+
+- 业务表由 `src/lib/db/migrate.ts` 中的 `BUSINESS_SCHEMA_SQL` 内联 SQL 创建，
+  `runMigrations(databaseUrl)` 包装 `CREATE TABLE IF NOT EXISTS` + 枚举 `DO $$ ... duplicate_object` 守卫，幂等可重入。
+- `src/instrumentation.ts` 在 Next.js 进程启动时调一次 `runMigrations()`（单进程，无需分布式锁）。
+- 也可以手动跑：`pnpm db:migrate`（实际入口 `scripts/db-migrate.ts`）。
+- pg-boss 的队列表由它自己用 `boss.start()` 时按需建出，落在 `pgboss` schema，不归我们管。
+
+可选路径（未来需要严格 schema 演进时启用）：
+
+- `pnpm db:generate` 让 drizzle-kit 比对 `src/lib/db/schema.ts` 自动生成 SQL（`drizzle.config.ts` 定义 `out`）。
+- 切换到 `drizzle.migrate()` 跑生成的 SQL 文件，并把内联 SQL 退役。
 
 ## 数据保留与清理
 
@@ -266,4 +276,5 @@ v0 的 `data/crawler.sqlite` → v1 Postgres：
   - 同样处理 `visited`
 - v0 的 JSONL 文件不迁移（信息已经在 SQLite 里）
 
-迁移脚本将放在 Phase 2 完成。
+> 该迁移脚本目前未实现；如果需要回填历史数据再补。`src/lib/crawler/storage/sqlite-storage.ts`
+> 仍然保留，便于脱机调试或一次性导出。
