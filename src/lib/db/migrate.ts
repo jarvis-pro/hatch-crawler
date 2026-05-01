@@ -111,6 +111,32 @@ END $$`,
   "value" jsonb NOT NULL,
   "updated_at" timestamp NOT NULL DEFAULT now()
 )`,
+
+  // ── Phase 5：多平台扩展 ALTER TABLE（幂等）────────────────────
+
+  // items 加三列
+  `ALTER TABLE "items" ADD COLUMN IF NOT EXISTS "platform" varchar(32)`,
+  `ALTER TABLE "items" ADD COLUMN IF NOT EXISTS "kind" varchar(16)`,
+  `ALTER TABLE "items" ADD COLUMN IF NOT EXISTS "source_id" varchar(128)`,
+
+  // items 新增索引
+  `CREATE INDEX IF NOT EXISTS "idx_items_kind" ON "items" ("kind") WHERE "kind" IS NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS "idx_items_platform" ON "items" ("platform") WHERE "platform" IS NOT NULL`,
+  // (platform, source_id) 唯一，仅对双非 null 行生效（幂等）
+  `CREATE UNIQUE INDEX IF NOT EXISTS "uniq_items_platform_source" ON "items" ("platform", "source_id") WHERE "platform" IS NOT NULL AND "source_id" IS NOT NULL`,
+
+  // spiders 加两列
+  `ALTER TABLE "spiders" ADD COLUMN IF NOT EXISTS "platform" varchar(32)`,
+  `ALTER TABLE "spiders" ADD COLUMN IF NOT EXISTS "emits_kinds" jsonb NOT NULL DEFAULT '[]'::jsonb`,
+
+  // 一次性 backfill：把存量 nextjs-blog 条目标注 platform / kind / source_id
+  // WHERE platform IS NULL 保证幂等（只跑一次）
+  `UPDATE "items"
+   SET "platform"  = 'nextjs-blog',
+       "kind"      = 'article',
+       "source_id" = "url"
+   WHERE "spider" = 'nextjs-blog'
+     AND "platform" IS NULL`,
 ];
 
 export interface MigrateResult {

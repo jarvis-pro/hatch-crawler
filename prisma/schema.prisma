@@ -51,6 +51,9 @@ model Spider {
   perHostIntervalMs Int      @default(500) @map("per_host_interval_ms")
   enabled           Boolean  @default(true)
   cronSchedule      String?  @map("cron_schedule") @db.VarChar(64)
+  // Phase 5：多平台标记
+  platform          String?  @db.VarChar(32)
+  emitsKinds        Json     @default("[]") @map("emits_kinds")
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt         DateTime @default(now()) @map("updated_at") @db.Timestamp(6)
 
@@ -124,12 +127,18 @@ model Item {
   contentHash String   @map("content_hash") @db.Char(40)
   payload     Json
   fetchedAt   DateTime @default(now()) @map("fetched_at") @db.Timestamp(6)
+  // Phase 5：多平台标记
+  platform    String?  @db.VarChar(32)
+  kind        String?  @db.VarChar(16)
+  sourceId    String?  @map("source_id") @db.VarChar(128)
 
   run Run? @relation(fields: [runId], references: [id], onDelete: SetNull)
 
   @@unique([spider, urlHash, contentHash], map: "uniq_items_spider_url_content")
   @@index([spider, type], map: "idx_items_spider_type")
   @@index([fetchedAt], map: "idx_items_fetched_at")
+  @@index([kind], map: "idx_items_kind")
+  @@index([platform], map: "idx_items_platform")
   @@map("items")
 }
 
