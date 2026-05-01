@@ -5,7 +5,8 @@ import { env } from '@/lib/env';
 import { fail, failInternal, failValidation, ok } from '@/lib/api/response';
 
 const createSchema = z.object({
-  spider: z.string().min(1),
+  /** spiders.id UUID */
+  spiderId: z.string().uuid(),
   overrides: z.record(z.unknown()).default({}),
 });
 
@@ -16,12 +17,13 @@ export async function POST(req: Request): Promise<Response> {
     if (!parsed.success) return failValidation(parsed.error);
 
     const db = getDb(env.databaseUrl);
-    const spider = await spiderRepo.getByName(db, parsed.data.spider);
-    if (!spider) return fail('NOT_FOUND', `spider not found: ${parsed.data.spider}`);
-    if (!spider.enabled) return fail('CONFLICT', `spider disabled: ${parsed.data.spider}`);
+    const spider = await spiderRepo.getById(db, parsed.data.spiderId);
+    if (!spider) return fail('NOT_FOUND', `spider not found: ${parsed.data.spiderId}`);
+    if (!spider.enabled) return fail('CONFLICT', `spider disabled: ${spider.name}`);
 
     const run = await runRepo.create(db, {
-      spiderName: parsed.data.spider,
+      spiderId: spider.id,
+      spiderName: spider.name,
       triggerType: 'manual',
       overrides: parsed.data.overrides,
     });
@@ -30,7 +32,7 @@ export async function POST(req: Request): Promise<Response> {
     await ready;
     await boss.send(QUEUE_CRAWL, {
       runId: run.id,
-      spider: parsed.data.spider,
+      spiderId: spider.id,
       overrides: parsed.data.overrides,
     });
 
@@ -43,7 +45,7 @@ export async function POST(req: Request): Promise<Response> {
 export async function GET(req: Request): Promise<Response> {
   try {
     const url = new URL(req.url);
-    const spider = url.searchParams.get('spider') ?? undefined;
+    const spiderId = url.searchParams.get('spiderId') ?? undefined;
     const statusParam = url.searchParams.get('status');
     const status = statusParam ? (statusParam.split(',') as RunStatus[]) : undefined;
     const page = Number(url.searchParams.get('page') ?? '1');
@@ -51,7 +53,7 @@ export async function GET(req: Request): Promise<Response> {
 
     const db = getDb(env.databaseUrl);
     const result = await runRepo.list(db, {
-      spider,
+      spiderId,
       status,
       page: Number.isFinite(page) ? page : 1,
       pageSize: Number.isFinite(pageSize) ? pageSize : 20,
