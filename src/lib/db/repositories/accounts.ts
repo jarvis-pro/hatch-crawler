@@ -172,28 +172,45 @@ export async function getById(
   };
 }
 
-/** 取指定 platform 的第一条 active 账号，解密后返回明文 payload */
+/**
+ * 取指定 platform 最久未使用的 active 账号，解密后返回 { id, payload }。
+ * 同时更新 lastUsedAt，实现多账号 round-robin 轮换。
+ * 若无可用账号返回 null。
+ */
+export async function getActiveAccount(
+  db: Db,
+  platform: string,
+  kind: 'apikey' | 'cookie' | 'oauth' | 'session',
+  masterKeyHex: string,
+): Promise<{ id: number; payload: string } | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const row = await (db as any).account.findFirst({
+    where: { platform, kind, status: 'active' },
+    orderBy: [{ lastUsedAt: 'asc' }, { id: 'asc' }], // 最久未用的优先；lastUsedAt 为 null 排最前
+  });
+  if (!row) return null;
+
+  const id = (row as { id: number }).id;
+
+  // 标记为本次使用
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (db as any).account.update({
+    where: { id },
+    data: { lastUsedAt: new Date() },
+  });
+
+  return { id, payload: decrypt((row as { payloadEnc: string }).payloadEnc, masterKeyHex) };
+}
+
+/** @deprecated 改用 getActiveAccount；此函数仍可用但不返回 accountId */
 export async function getActivePayload(
   db: Db,
   platform: string,
   kind: 'apikey' | 'cookie' | 'oauth' | 'session',
   masterKeyHex: string,
 ): Promise<string | null> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const row = await (db as any).account.findFirst({
-    where: { platform, kind, status: 'active' },
-    orderBy: { lastUsedAt: 'asc' }, // 优先用最久没用的
-  });
-  if (!row) return null;
-
-  // 更新 lastUsedAt
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (db as any).account.update({
-    where: { id: (row as { id: number }).id },
-    data: { lastUsedAt: new Date() },
-  });
-
-  return decrypt((row as { payloadEnc: string }).payloadEnc, masterKeyHex);
+  const result = await getActiveAccount(db, platform, kind, masterKeyHex);
+  return result?.payload ?? null;
 }
 
 /** 删除账号 */
