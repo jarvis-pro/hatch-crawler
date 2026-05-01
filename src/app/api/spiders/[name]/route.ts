@@ -17,6 +17,8 @@ const updateSchema = z.object({
   cronSchedule: z.string().nullish(),
   // Spider 运行时参数默认值（channelId / query 等）
   defaultParams: z.record(z.unknown()).default({}),
+  // 平台标记（youtube / bilibili 等），与 SPIDER_REGISTRY.platform 对齐
+  platform: z.string().max(32).nullish(),
 });
 
 interface RouteContext {

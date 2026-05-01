@@ -36,6 +36,8 @@ export async function upsert(db: Db, input: NewSpider): Promise<Spider> {
     perHostIntervalMs: input.perHostIntervalMs ?? 500,
     enabled: input.enabled ?? true,
     cronSchedule: input.cronSchedule ?? null,
+    // platform 写入：允许传 null（通用爬虫），传值时直接存
+    platform: input.platform ?? null,
     defaultParams: input.defaultParams ?? {},
   };
 

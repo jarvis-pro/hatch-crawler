@@ -73,6 +73,7 @@ export type NewSpider = {
   perHostIntervalMs?: number;
   enabled?: boolean;
   cronSchedule?: string | null;
+  platform?: string | null;
   defaultParams?: Record<string, unknown>;
 };
 

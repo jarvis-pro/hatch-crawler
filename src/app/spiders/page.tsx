@@ -289,12 +289,16 @@ function NewSpiderDialog({
     setParams(defaultParamsFor(name));
   };
 
+  // 从注册表条目里取 platform，自动写入 DB
+  const selectedEntry = registry.find((e) => e.name === selectedName);
+
   const save = useMutation({
     mutationFn: () =>
       api.put<Spider>(`/api/spiders/${selectedName}`, {
         displayName,
         startUrls: [],
         enabled,
+        platform: selectedEntry?.platform ?? null,
         defaultParams: params,
       }),
     onSuccess: () => {
@@ -400,6 +404,7 @@ export default function SpidersPage() {
         perHostIntervalMs: s.perHostIntervalMs,
         enabled: !s.enabled,
         cronSchedule: s.cronSchedule,
+        platform: s.platform,
         defaultParams: s.defaultParams,
       }),
     onSuccess: () => {
