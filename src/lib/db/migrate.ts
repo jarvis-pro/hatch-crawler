@@ -1,20 +1,19 @@
-import postgres from "postgres";
-import { drizzle } from "drizzle-orm/postgres-js";
-import { sql } from "drizzle-orm";
-import PgBoss from "pg-boss";
+import { PrismaClient } from '@prisma/client';
+import PgBoss from 'pg-boss';
 
 /**
  * 迁移函数：保证业务表 + pg-boss 队列表都就绪。
  *
  * 设计取舍：
- *  - 不用 drizzle-kit 生成 SQL 文件 + drizzle.migrate()，
- *    那条路径需要把 .sql 文件打进 Docker 镜像，多一个步骤
+ *  - 不用 `prisma migrate deploy` 那一套（生产路径需要把 prisma/migrations
+ *    打进镜像 + 跑 CLI），项目处于早期阶段，幂等内联 SQL 更轻
  *  - 直接用 CREATE TABLE IF NOT EXISTS 内联 SQL，幂等可重入
- *  - 学习项目这样最简单；后续要做严格的 schema 演进再上 drizzle-kit
+ *  - schema 与 prisma/schema.prisma 保持一致；改了 schema.prisma 后
+ *    把对应 DDL 同步到这里（或者切到 prisma migrate 再说）
  *
  * 调用方：
- *  - apps/web/instrumentation.ts 启动时调一次
- *  - packages/db/scripts/migrate.ts 也调它（手动迁移用）
+ *  - src/instrumentation.ts 启动时调一次
+ *  - scripts/db-migrate.ts 也调它（手动迁移用）
  */
 
 const BUSINESS_SCHEMA_SQL = `
@@ -66,7 +65,7 @@ CREATE INDEX IF NOT EXISTS "idx_runs_spider" ON "runs" ("spider_name", "created_
 
 -- ── events ───────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS "events" (
-  "id" bigserial PRIMARY KEY,
+  "id" serial PRIMARY KEY,
   "run_id" uuid NOT NULL REFERENCES "runs"("id") ON DELETE CASCADE,
   "level" "event_level" NOT NULL,
   "type" varchar(32) NOT NULL,
@@ -78,7 +77,7 @@ CREATE INDEX IF NOT EXISTS "idx_events_run_time" ON "events" ("run_id", "occurre
 
 -- ── items ────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS "items" (
-  "id" bigserial PRIMARY KEY,
+  "id" serial PRIMARY KEY,
   "run_id" uuid REFERENCES "runs"("id") ON DELETE SET NULL,
   "spider" varchar(64) NOT NULL,
   "type" varchar(32) NOT NULL,
@@ -114,20 +113,19 @@ export interface MigrateResult {
   bossSchemaReady: boolean;
 }
 
-export async function runMigrations(
-  databaseUrl: string,
-): Promise<MigrateResult> {
-  // 1) 业务表（用一个临时短连接，避免占用主连接池）
-  const client = postgres(databaseUrl, { max: 1 });
-  const db = drizzle(client);
+export async function runMigrations(databaseUrl: string): Promise<MigrateResult> {
+  // 1) 业务表（用一个临时 PrismaClient，跑完即关）
+  const client = new PrismaClient({
+    datasources: { db: { url: databaseUrl } },
+  });
   try {
-    await db.execute(sql.raw(BUSINESS_SCHEMA_SQL));
+    await client.$executeRawUnsafe(BUSINESS_SCHEMA_SQL);
   } finally {
-    await client.end();
+    await client.$disconnect();
   }
 
   // 2) pg-boss 自管表（boss.start() 内部 idempotent 建表）
-  const boss = new PgBoss({ connectionString: databaseUrl, schema: "pgboss" });
+  const boss = new PgBoss({ connectionString: databaseUrl, schema: 'pgboss' });
   await boss.start();
   await boss.stop({ graceful: true });
 

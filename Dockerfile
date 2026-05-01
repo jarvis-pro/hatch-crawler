@@ -8,6 +8,7 @@ RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
 WORKDIR /repo
 
 COPY pnpm-lock.yaml package.json .npmrc ./
+COPY prisma ./prisma
 RUN pnpm install --frozen-lockfile --prod=false
 
 FROM node:22-alpine AS builder

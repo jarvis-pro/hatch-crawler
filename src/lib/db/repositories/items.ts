@@ -1,10 +1,14 @@
-import { createHash } from "node:crypto";
-import { and, desc, eq, sql } from "drizzle-orm";
-import type { Db } from "../client";
-import { items, type Item } from "../schema";
+import { createHash } from 'node:crypto';
+import { type Prisma } from '@prisma/client';
+import type { Db } from '../client';
+import type { Item } from '../index';
 
 function sha1(s: string): string {
-  return createHash("sha1").update(s).digest("hex");
+  return createHash('sha1').update(s).digest('hex');
+}
+
+function shape(row: { payload: unknown; [k: string]: unknown }): Item {
+  return { ...row, payload: row.payload as Record<string, unknown> } as Item;
 }
 
 export interface SaveItemInput {
@@ -20,26 +24,34 @@ export interface SaveItemInput {
  * 通过 (spider, url_hash, content_hash) 的唯一索引去重；
  * 内容相同则跳过、isNew = false。
  */
-export async function save(
-  db: Db,
-  input: SaveItemInput,
-): Promise<{ isNew: boolean }> {
+export async function save(db: Db, input: SaveItemInput): Promise<{ isNew: boolean }> {
   const urlHash = sha1(input.url);
   const contentHash = sha1(JSON.stringify(input.payload));
-  const result = await db
-    .insert(items)
-    .values({
-      runId: input.runId,
-      spider: input.spider,
-      type: input.type,
-      url: input.url,
-      urlHash,
-      contentHash,
-      payload: input.payload,
-    })
-    .onConflictDoNothing()
-    .returning({ id: items.id });
-  return { isNew: result.length > 0 };
+  try {
+    await db.item.create({
+      data: {
+        runId: input.runId,
+        spider: input.spider,
+        type: input.type,
+        url: input.url,
+        urlHash,
+        contentHash,
+        payload: input.payload,
+      },
+    });
+    return { isNew: true };
+  } catch (err) {
+    // P2002 = 唯一约束冲突 → 已存在相同内容，按 isNew=false 处理
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      'code' in err &&
+      (err as { code: string }).code === 'P2002'
+    ) {
+      return { isNew: false };
+    }
+    throw err;
+  }
 }
 
 export interface ListParams {
@@ -63,36 +75,58 @@ export async function list(
   const page = params.page ?? 1;
   const pageSize = params.pageSize ?? 20;
 
-  const conditions = [];
-  if (params.spider) conditions.push(eq(items.spider, params.spider));
-  if (params.type) conditions.push(eq(items.type, params.type));
-  if (params.runId) conditions.push(eq(items.runId, params.runId));
+  const where: Prisma.ItemWhereInput = {};
+  if (params.spider) where.spider = params.spider;
+  if (params.type) where.type = params.type;
+  if (params.runId) where.runId = params.runId;
+
+  // 简单 ILIKE 全文搜索：URL 或 payload->>'title'
+  // Prisma 的 jsonb path filter 不直接支持 ILIKE，所以这条用 $queryRaw 分支
   if (params.q) {
-    // 简单 ILIKE 全文搜索：URL 或 payload->>'title'
     const pattern = `%${params.q}%`;
-    conditions.push(
-      sql`(${items.url} ILIKE ${pattern} OR ${items.payload}->>'title' ILIKE ${pattern})`,
-    );
+    const baseFilters: string[] = [];
+    const values: (string | number)[] = [pattern, pattern];
+    if (params.spider) {
+      baseFilters.push(`"spider" = $${values.length + 1}`);
+      values.push(params.spider);
+    }
+    if (params.type) {
+      baseFilters.push(`"type" = $${values.length + 1}`);
+      values.push(params.type);
+    }
+    if (params.runId) {
+      baseFilters.push(`"run_id" = $${values.length + 1}::uuid`);
+      values.push(params.runId);
+    }
+    const extra = baseFilters.length > 0 ? ' AND ' + baseFilters.join(' AND ') : '';
+    const dataSql = `SELECT * FROM "items" WHERE ("url" ILIKE $1 OR "payload"->>'title' ILIKE $2)${extra} ORDER BY "fetched_at" DESC LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`;
+    const countSql = `SELECT count(*)::int AS value FROM "items" WHERE ("url" ILIKE $1 OR "payload"->>'title' ILIKE $2)${extra}`;
+    const [rows, countRows] = await Promise.all([
+      db.$queryRawUnsafe<Item[]>(dataSql, ...values),
+      db.$queryRawUnsafe<{ value: number }[]>(countSql, ...values),
+    ]);
+    return {
+      data: rows.map(shape),
+      total: countRows[0]?.value ?? 0,
+      page,
+      pageSize,
+    };
   }
-  const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-  const data = await db
-    .select()
-    .from(items)
-    .where(where)
-    .orderBy(desc(items.fetchedAt))
-    .limit(pageSize)
-    .offset((page - 1) * pageSize);
+  const [rows, total] = await Promise.all([
+    db.item.findMany({
+      where,
+      orderBy: { fetchedAt: 'desc' },
+      take: pageSize,
+      skip: (page - 1) * pageSize,
+    }),
+    db.item.count({ where }),
+  ]);
 
-  const [c] = await db
-    .select({ value: sql<number>`count(*)::int` })
-    .from(items)
-    .where(where);
-
-  return { data, total: c?.value ?? 0, page, pageSize };
+  return { data: rows.map(shape), total, page, pageSize };
 }
 
 export async function getById(db: Db, id: number): Promise<Item | null> {
-  const rows = await db.select().from(items).where(eq(items.id, id)).limit(1);
-  return rows[0] ?? null;
+  const row = await db.item.findUnique({ where: { id } });
+  return row ? shape(row) : null;
 }

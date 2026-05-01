@@ -1,23 +1,20 @@
-import postgres, { type Sql } from "postgres";
-import { drizzle } from "drizzle-orm/postgres-js";
-import * as schema from "./schema";
+import { PrismaClient } from '@prisma/client';
 
 /**
- * Drizzle 客户端工厂。
+ * Prisma 客户端工厂。
  *
- * 单例：第一次调用建连接池，后续调用复用。
- * 用 `globalThis` 守卫避免 Next.js dev 热重载时反复建池。
+ * 单例：第一次调用建客户端（内部维护连接池），后续调用复用。
+ * 用 `globalThis` 守卫避免 Next.js dev 热重载时反复建客户端。
  */
 
-export type Db = ReturnType<typeof drizzle<typeof schema>>;
+export type Db = PrismaClient;
 
 interface CachedClient {
-  sql: Sql;
-  db: Db;
+  db: PrismaClient;
   url: string;
 }
 
-const CACHE_KEY = "__hatchCrawlerDbClient";
+const CACHE_KEY = '__hatchCrawlerDbClient';
 const globalCache = globalThis as typeof globalThis & {
   [CACHE_KEY]?: CachedClient;
 };
@@ -28,23 +25,20 @@ export function getDb(databaseUrl: string): Db {
 
   // URL 变了或第一次：先关旧的（不阻塞）
   if (cached) {
-    void cached.sql.end({ timeout: 1 }).catch(() => {});
+    void cached.db.$disconnect().catch(() => {});
   }
 
-  const sql = postgres(databaseUrl, {
-    max: 10,
-    idle_timeout: 30,
-    prepare: false,
+  const db = new PrismaClient({
+    datasources: { db: { url: databaseUrl } },
   });
-  const db = drizzle(sql, { schema, casing: "snake_case" });
 
-  globalCache[CACHE_KEY] = { sql, db, url: databaseUrl };
+  globalCache[CACHE_KEY] = { db, url: databaseUrl };
   return db;
 }
 
 export async function closeDb(): Promise<void> {
   const cached = globalCache[CACHE_KEY];
   if (!cached) return;
-  await cached.sql.end({ timeout: 5 });
+  await cached.db.$disconnect();
   delete globalCache[CACHE_KEY];
 }

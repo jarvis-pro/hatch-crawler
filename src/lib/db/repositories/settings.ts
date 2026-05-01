@@ -1,33 +1,24 @@
-import { eq } from "drizzle-orm";
-import type { Db } from "../client";
-import { settings, type Setting } from "../schema";
+import type { Prisma } from '@prisma/client';
+import type { Db } from '../client';
+import type { Setting } from '../index';
 
 export async function get<T = unknown>(db: Db, key: string): Promise<T | null> {
-  const rows = await db
-    .select()
-    .from(settings)
-    .where(eq(settings.key, key))
-    .limit(1);
-  return (rows[0]?.value as T | undefined) ?? null;
+  const row = await db.setting.findUnique({ where: { key } });
+  return (row?.value as T | undefined) ?? null;
 }
 
 export async function set(db: Db, key: string, value: unknown): Promise<void> {
-  await db
-    .insert(settings)
-    .values({ key, value: value as Setting["value"] })
-    .onConflictDoUpdate({
-      target: settings.key,
-      set: {
-        value: value as Setting["value"],
-        updatedAt: new Date(),
-      },
-    });
+  await db.setting.upsert({
+    where: { key },
+    create: { key, value: value as Prisma.InputJsonValue },
+    update: { value: value as Prisma.InputJsonValue, updatedAt: new Date() },
+  });
 }
 
 export async function listAll(db: Db): Promise<Setting[]> {
-  return db.select().from(settings);
+  return db.setting.findMany();
 }
 
 export async function remove(db: Db, key: string): Promise<void> {
-  await db.delete(settings).where(eq(settings.key, key));
+  await db.setting.delete({ where: { key } });
 }

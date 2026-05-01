@@ -1,0 +1,160 @@
+// Prisma schema —— 与 docs/reference/data-model.md 一一对应。修改前先读那份文档。
+//
+// 命名约定：
+//   - 表名 / 列名用 snake_case（@@map / @map）
+//   - 索引名用 idx_<table>_<cols>，唯一索引用 uniq_<...>
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────────────────────────────────────
+// 枚举
+// ──────────────────────────────────────────────────────────
+
+enum RunStatus {
+  queued
+  running
+  completed
+  failed
+  stopped
+
+  @@map("run_status")
+}
+
+enum EventLevel {
+  debug
+  info
+  warn
+  error
+
+  @@map("event_level")
+}
+
+// ──────────────────────────────────────────────────────────
+// spiders —— 注册的 Spider 定义
+// ──────────────────────────────────────────────────────────
+
+model Spider {
+  name              String   @id @db.VarChar(64)
+  displayName       String   @map("display_name") @db.VarChar(128)
+  description       String?
+  startUrls         Json     @map("start_urls")
+  allowedHosts      Json     @default("[]") @map("allowed_hosts")
+  maxDepth          Int      @default(2) @map("max_depth")
+  concurrency       Int      @default(4)
+  perHostIntervalMs Int      @default(500) @map("per_host_interval_ms")
+  enabled           Boolean  @default(true)
+  cronSchedule      String?  @map("cron_schedule") @db.VarChar(64)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt         DateTime @default(now()) @map("updated_at") @db.Timestamp(6)
+
+  runs Run[]
+
+  @@map("spiders")
+}
+
+// ──────────────────────────────────────────────────────────
+// runs —— 每次抓取实例
+// ──────────────────────────────────────────────────────────
+
+model Run {
+  id           String    @id @default(uuid()) @db.Uuid
+  spiderName   String    @map("spider_name") @db.VarChar(64)
+  status       RunStatus @default(queued)
+  triggerType  String    @map("trigger_type") @db.VarChar(16)
+  overrides    Json?     @default("{}")
+
+  // 统计字段，worker 增量更新
+  fetched   Int @default(0)
+  emitted   Int @default(0)
+  newItems  Int @default(0) @map("new_items")
+  errors    Int @default(0)
+
+  startedAt    DateTime? @map("started_at") @db.Timestamp(6)
+  finishedAt   DateTime? @map("finished_at") @db.Timestamp(6)
+  errorMessage String?   @map("error_message")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  spider Spider  @relation(fields: [spiderName], references: [name], onDelete: Cascade)
+  events Event[]
+  items  Item[]
+
+  @@index([status], map: "idx_runs_status")
+  @@index([spiderName, createdAt], map: "idx_runs_spider")
+  @@map("runs")
+}
+
+// ──────────────────────────────────────────────────────────
+// events —— Run 的事件流（持久化日志）
+// ──────────────────────────────────────────────────────────
+
+model Event {
+  id         Int        @id @default(autoincrement())
+  runId      String     @map("run_id") @db.Uuid
+  level      EventLevel
+  type       String     @db.VarChar(32)
+  message    String?
+  payload    Json?      @default("{}")
+  occurredAt DateTime   @default(now()) @map("occurred_at") @db.Timestamp(6)
+
+  run Run @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, occurredAt], map: "idx_events_run_time")
+  @@map("events")
+}
+
+// ──────────────────────────────────────────────────────────
+// items —— 抓取到的内容
+// ──────────────────────────────────────────────────────────
+
+model Item {
+  id          Int      @id @default(autoincrement())
+  runId       String?  @map("run_id") @db.Uuid
+  spider      String   @db.VarChar(64)
+  type        String   @db.VarChar(32)
+  url         String
+  urlHash     String   @map("url_hash") @db.Char(40)
+  contentHash String   @map("content_hash") @db.Char(40)
+  payload     Json
+  fetchedAt   DateTime @default(now()) @map("fetched_at") @db.Timestamp(6)
+
+  run Run? @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  @@unique([spider, urlHash, contentHash], map: "uniq_items_spider_url_content")
+  @@index([spider, type], map: "idx_items_spider_type")
+  @@index([fetchedAt], map: "idx_items_fetched_at")
+  @@map("items")
+}
+
+// ──────────────────────────────────────────────────────────
+// visited —— URL 指纹去重表（跨 Run 共享）
+// ──────────────────────────────────────────────────────────
+
+model Visited {
+  spider    String   @db.VarChar(64)
+  urlHash   String   @map("url_hash") @db.Char(40)
+  url       String
+  visitedAt DateTime @default(now()) @map("visited_at") @db.Timestamp(6)
+
+  @@id([spider, urlHash])
+  @@map("visited")
+}
+
+// ──────────────────────────────────────────────────────────
+// settings —— 通用 KV
+// ──────────────────────────────────────────────────────────
+
+model Setting {
+  key       String   @id @db.VarChar(64)
+  value     Json
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamp(6)
+
+  @@map("settings")
+}

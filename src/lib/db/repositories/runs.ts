@@ -1,54 +1,58 @@
-import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
-import type { Db } from "../client";
-import { runs, type NewRun, type Run, type RunStatus } from "../schema";
+import { type Prisma, RunStatus } from '@prisma/client';
+import type { Db } from '../client';
+import type { Run } from '../index';
 
 export interface CreateRunInput {
   spiderName: string;
-  triggerType: "manual" | "cron";
+  triggerType: 'manual' | 'cron';
   overrides?: Record<string, unknown>;
 }
 
-export async function create(
-  db: Db,
-  input: CreateRunInput,
-): Promise<{ id: string }> {
-  const [row] = await db
-    .insert(runs)
-    .values({
+function shape(row: { overrides: unknown; [k: string]: unknown }): Run {
+  return {
+    ...row,
+    overrides: (row.overrides ?? null) as Record<string, unknown> | null,
+  } as Run;
+}
+
+export async function create(db: Db, input: CreateRunInput): Promise<{ id: string }> {
+  const row = await db.run.create({
+    data: {
       spiderName: input.spiderName,
       triggerType: input.triggerType,
       overrides: input.overrides ?? {},
-    } satisfies NewRun)
-    .returning({ id: runs.id });
-  return { id: row!.id };
+    },
+    select: { id: true },
+  });
+  return { id: row.id };
 }
 
 export async function getById(db: Db, id: string): Promise<Run | null> {
-  const rows = await db.select().from(runs).where(eq(runs.id, id)).limit(1);
-  return rows[0] ?? null;
+  const row = await db.run.findUnique({ where: { id } });
+  return row ? shape(row) : null;
 }
 
 export async function markStarted(db: Db, id: string): Promise<void> {
-  await db
-    .update(runs)
-    .set({ status: "running", startedAt: new Date() })
-    .where(eq(runs.id, id));
+  await db.run.update({
+    where: { id },
+    data: { status: RunStatus.running, startedAt: new Date() },
+  });
 }
 
 export async function markFinished(
   db: Db,
   id: string,
-  status: "completed" | "failed" | "stopped",
+  status: 'completed' | 'failed' | 'stopped',
   errorMessage?: string,
 ): Promise<void> {
-  await db
-    .update(runs)
-    .set({
-      status,
+  await db.run.update({
+    where: { id },
+    data: {
+      status: RunStatus[status],
       finishedAt: new Date(),
       errorMessage: errorMessage ?? null,
-    })
-    .where(eq(runs.id, id));
+    },
+  });
 }
 
 export async function incrementStats(
@@ -61,14 +65,13 @@ export async function incrementStats(
     errors: number;
   }>,
 ): Promise<void> {
-  const updates: Record<string, unknown> = {};
-  if (delta.fetched) updates.fetched = sql`${runs.fetched} + ${delta.fetched}`;
-  if (delta.emitted) updates.emitted = sql`${runs.emitted} + ${delta.emitted}`;
-  if (delta.newItems)
-    updates.newItems = sql`${runs.newItems} + ${delta.newItems}`;
-  if (delta.errors) updates.errors = sql`${runs.errors} + ${delta.errors}`;
-  if (Object.keys(updates).length === 0) return;
-  await db.update(runs).set(updates).where(eq(runs.id, id));
+  const data: Prisma.RunUpdateInput = {};
+  if (delta.fetched) data.fetched = { increment: delta.fetched };
+  if (delta.emitted) data.emitted = { increment: delta.emitted };
+  if (delta.newItems) data.newItems = { increment: delta.newItems };
+  if (delta.errors) data.errors = { increment: delta.errors };
+  if (Object.keys(data).length === 0) return;
+  await db.run.update({ where: { id }, data });
 }
 
 export interface ListParams {
@@ -90,28 +93,23 @@ export async function list(
   const page = params.page ?? 1;
   const pageSize = params.pageSize ?? 20;
 
-  const conditions = [];
-  if (params.spider) conditions.push(eq(runs.spiderName, params.spider));
+  const where: Prisma.RunWhereInput = {};
+  if (params.spider) where.spiderName = params.spider;
   if (params.status) {
-    const arr = Array.isArray(params.status) ? params.status : [params.status];
-    conditions.push(inArray(runs.status, arr));
+    where.status = Array.isArray(params.status) ? { in: params.status } : params.status;
   }
-  const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-  const data = await db
-    .select()
-    .from(runs)
-    .where(where)
-    .orderBy(desc(runs.createdAt))
-    .limit(pageSize)
-    .offset((page - 1) * pageSize);
+  const [rows, total] = await Promise.all([
+    db.run.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: pageSize,
+      skip: (page - 1) * pageSize,
+    }),
+    db.run.count({ where }),
+  ]);
 
-  const [c] = await db
-    .select({ value: sql<number>`count(*)::int` })
-    .from(runs)
-    .where(where);
-
-  return { data, total: c?.value ?? 0, page, pageSize };
+  return { data: rows.map(shape), total, page, pageSize };
 }
 
 /**
@@ -119,19 +117,18 @@ export async function list(
  *
  * 触发场景：上次 web 进程异常退出，DB 里留下假的 running 记录。
  */
-export async function cleanupStale(
-  db: Db,
-  staleAfterMin = 30,
-): Promise<number> {
+export async function cleanupStale(db: Db, staleAfterMin = 30): Promise<number> {
   const threshold = new Date(Date.now() - staleAfterMin * 60_000);
-  const rows = await db
-    .update(runs)
-    .set({
-      status: "failed",
+  const result = await db.run.updateMany({
+    where: {
+      status: RunStatus.running,
+      startedAt: { lt: threshold },
+    },
+    data: {
+      status: RunStatus.failed,
       finishedAt: new Date(),
-      errorMessage: "stale: marked failed by startup cleanup",
-    })
-    .where(and(eq(runs.status, "running"), lt(runs.startedAt, threshold)))
-    .returning({ id: runs.id });
-  return rows.length;
+      errorMessage: 'stale: marked failed by startup cleanup',
+    },
+  });
+  return result.count;
 }
