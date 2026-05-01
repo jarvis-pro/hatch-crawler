@@ -78,6 +78,54 @@ export interface XhsUserNotesResponse {
   };
 }
 
+// ── 笔记详情接口 POST /api/sns/web/v1/feed ────────────────────────────────────
+
+export interface XhsNoteImage {
+  url: string;
+  width?: number;
+  height?: number;
+}
+
+export interface XhsTagItem {
+  id?: string;
+  name?: string;
+  type?: string;
+}
+
+export interface XhsNoteDetail {
+  note_id?: string;
+  type: 'normal' | 'video';
+  title?: string;
+  desc?: string;
+  user?: XhsUser;
+  image_list?: XhsNoteImage[];
+  tag_list?: XhsTagItem[];
+  interact_info?: XhsInteractInfo;
+  time?: number;
+  last_update_time?: number;
+  video?: {
+    media?: {
+      stream?: {
+        h264?: Array<{ master_url?: string }>;
+      };
+    };
+    duration?: number;
+  };
+}
+
+export interface XhsNoteDetailResponse {
+  code: number;
+  success?: boolean;
+  msg?: string;
+  data?: {
+    items?: Array<{
+      id: string;
+      model_type: string;
+      note_card?: XhsNoteDetail;
+    }>;
+  };
+}
+
 // ── Payload 映射 ──────────────────────────────────────────────────────────────
 
 /**
@@ -113,6 +161,60 @@ export function searchNoteToPayload(
     media: coverUrl
       ? [{ kind: 'cover', url: coverUrl, width: card.cover?.width, height: card.cover?.height }]
       : undefined,
+    noteId,
+  };
+}
+
+/**
+ * 将笔记详情接口响应转换为标准 payload（包含完整正文、图片列表、标签）。
+ */
+export function noteDetailToPayload(
+  noteId: string,
+  detail: XhsNoteDetail,
+): Record<string, unknown> {
+  const kind = detail.type === 'video' ? 'video' : 'post';
+
+  const images: Array<{ kind: string; url: string; width?: number; height?: number }> = (
+    detail.image_list ?? []
+  ).map((img) => ({
+    kind: 'image',
+    url: img.url,
+    width: img.width,
+    height: img.height,
+  }));
+
+  const videoUrl = detail.video?.media?.stream?.h264?.[0]?.master_url;
+  if (videoUrl) {
+    images.unshift({ kind: 'video', url: videoUrl });
+  }
+
+  return {
+    title: detail.title ?? '',
+    description: detail.desc ?? '',
+    kind,
+    author: detail.user
+      ? {
+          id: detail.user.userid ?? detail.user.user_id,
+          name: detail.user.nickname,
+          avatar: detail.user.avatar,
+          url: detail.user.userid
+            ? `https://www.xiaohongshu.com/user/profile/${detail.user.userid}`
+            : undefined,
+        }
+      : undefined,
+    publishedAt: detail.time ? new Date(detail.time * 1000).toISOString() : undefined,
+    updatedAt: detail.last_update_time
+      ? new Date(detail.last_update_time * 1000).toISOString()
+      : undefined,
+    tags: (detail.tag_list ?? []).map((t) => t.name).filter(Boolean),
+    metrics: {
+      likes: parseCount(detail.interact_info?.liked_count),
+      comments: parseCount(detail.interact_info?.comment_count),
+      collects: parseCount(detail.interact_info?.collected_count),
+      shares: parseCount(detail.interact_info?.share_count),
+    },
+    media: images.length > 0 ? images : undefined,
+    videoDuration: detail.video?.duration,
     noteId,
   };
 }

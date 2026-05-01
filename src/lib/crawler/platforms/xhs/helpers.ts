@@ -103,6 +103,19 @@ export function buildUserNotesUrl(params: UserNotesParams): string {
 
 export const USER_NOTES_PATH = '/api/sns/web/v1/user/posted';
 
+// ── 笔记详情接口 POST /api/sns/web/v1/feed ────────────────────────────────────
+
+export const NOTE_DETAIL_PATH = '/api/sns/web/v1/feed';
+export const NOTE_DETAIL_URL = `${BASE}${NOTE_DETAIL_PATH}`;
+
+export function buildNoteDetailBody(noteId: string): string {
+  return JSON.stringify({
+    source_note_id: noteId,
+    image_formats: ['jpg', 'webp', 'avif'],
+    extra: { need_body_topic: '1' },
+  });
+}
+
 // ── 工具 ──────────────────────────────────────────────────────────────────────
 
 /** 生成随机 search_id（XHS 接口要求） */
