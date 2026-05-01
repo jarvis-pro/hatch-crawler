@@ -139,9 +139,9 @@ Dockerfile 策略：多阶段构建（`deps` / `builder` / `runner`），`node:2
 
 ---
 
-### Kind 化 + 平台标记 ⏳
+### Kind 化 + 平台标记 ✅
 
-> 完整设计见 [`rfcs/0001-multi-platform.md`](../rfcs/0001-multi-platform.md)
+> 完整设计见 [`rfcs/0001-multi-platform.md`](../rfcs/0001-multi-platform.md)（4 层抽象的进一步推进尚在 Draft）
 
 在不改业务行为的前提下，给现有数据加上 `platform` / `kind` / `sourceId` 维度，建立资源类型的 Zod schema 体系。这是凭据管理和媒体下载管道的地基。
 
@@ -173,7 +173,9 @@ API 影响：`GET /api/items` 返回多 3 个字段，列表过滤参数加 `pla
 
 ---
 
-### 第一个真平台 + 凭据管理 ⏳
+### 第一个真平台 + 凭据管理 ✅
+
+> 实际落地：YouTube + Bilibili + 小红书 + 微博 + 抖音 共 5 个平台，accounts 加密管理就位。
 
 按 Platform/Spider 分层写出第一个真平台，验证四层抽象是否站得住。顺带把 `accounts` 表立起来（cookie / OAuth 总要有）。
 
@@ -219,62 +221,100 @@ src/lib/spider-registry.ts
 
 ---
 
-### 媒体下载管道 ⏳
+### 媒体下载与转码管道 ✅
 
-把媒体文件下载从 Spider 流程里彻底拆出去，单独走 `download` 队列 + `AssetStore` 抽象。
+> 完整设计见 [`rfcs/0002-media-downloads.md`](../rfcs/0002-media-downloads.md)
+>
+> **早期设想 vs 实际落地的差异：** 早期方案叫 `Asset` / `AssetStore`，落地时改名 `Attachment` / `FileStorage`，
+> 与 `Item` 用关系列直接挂载（`item_id`），不再通过 `media[]` 索引；新增了 RFC 草案没列的"视频→音频转码"
+> 子系统（ffmpeg）和 YouTube 适配（yt-dlp），并把"自动派发 vs 手动派发"做成 spider 级开关 `autoDownload`。
 
 ```
 prisma/schema.prisma
-└── 新 model：Asset（含 status / storagePath / checksum）
+├── 新 enum：AttachmentKind（video/audio/image/archive/document/other）
+├── 新 enum：AttachmentStatus（queued/downloading/transcoding/completed/failed）
+├── 新 model：Attachment（含 sha256 去重 / parent_id 派生 / status 状态机 / progress_pct）
+├── Spider 加列：auto_download
+└── Run 加列：attachments_queued / attachments_completed / attachments_failed
 
-src/lib/db/boss.ts
-└── 加 QUEUE_DOWNLOAD = "download"
+src/lib/db/
+├── boss.ts                  + QUEUE_DOWNLOAD / QUEUE_TRANSCODE 常量与 Job 类型
+├── migrate.ts               + ALTER TABLE 段（幂等）
+└── repositories/attachments.ts
 
-src/lib/db/repositories/assets.ts
+src/lib/storage/
+└── files.ts                 FileStorage 接口 + LocalFileStorage 实现
+                             （路径白名单 + 防逃逸 + sha256 + STORAGE_BACKEND env 预留 S3）
 
-src/lib/crawler/downloader/
-├── index.ts                Downloader 接口
-├── http-stream.ts          直链下载（Range / 断点续传）
-├── hls.ts                  m3u8 分片合并
-└── ytdlp.ts                yt-dlp 子进程兜底（最广覆盖，最重）
+src/lib/downloads/
+├── http-fetcher.ts          got stream + downloadProgress + Content-Type 嗅扩展名
+├── ytdlp-fetcher.ts         spawn yt-dlp（无 shell）+ 临时目录合并 mp4
+├── ffmpeg-runner.ts         spawn ffmpeg + ffprobe 拿时长 + -progress pipe:1 解析
+└── system-deps.ts           检测 ffmpeg / yt-dlp 可用性（5 分钟 cache）
 
 src/lib/worker/
-├── download-handler.ts     消费 download 队列
-└── asset-store.ts          AssetStore 接口
-   ├── local-fs-store.ts    data/assets/<platform>/<yyyymm>/<sha256>.<ext>
-   └── s3-store.ts          可选；通过 env 切换
+├── download-job-handler.ts  按 fetcherKind 路由 http / yt-dlp，进度节流到 DB
+├── transcode-job-handler.ts 视频→音频，派生 attachment 链接到源
+├── attachment-dispatcher.ts run 完成后扫 payload.media[] + youtube 视频 item，批量派发
+├── host-limits.ts           youtube host 进程内串行化（mutex chain）
+├── job-handler.ts           + run 完成后按 spider.autoDownload 自动派发
+└── event-bus.ts             + AttachmentEvent 通道
 
-src/lib/worker/crawl-handler.ts
-└── emit item 后，按 item.media[] 推 download job
+src/lib/shared/events.ts     + AttachmentEvent union（queued/started/progress/completed/failed）
 
-src/app/api/assets/
-├── route.ts                列表 / 过滤
-├── [id]/route.ts           元数据
-└── [id]/raw/route.ts       本地代理读 / S3 redirect 签名 URL
+src/app/api/
+├── items/[id]/attachments/route.ts        GET 列表 + POST 创建并入队
+├── attachments/route.ts                   GET 全局列表（过滤 spider/status）
+├── attachments/[id]/route.ts              GET 详情 + DELETE
+├── attachments/[id]/download/route.ts     stream 文件本体
+├── attachments/[id]/retry/route.ts        失败重试（按 parentId 自动选队列）
+├── attachments/[id]/transcode/route.ts    派生新 attachment 入 transcode 队列
+├── attachments/gc/route.ts                清理 N 天前 failed
+├── runs/[id]/download-all/route.ts        一键派发本 run 全部可下载
+└── system/health/route.ts                 ffmpeg / yt-dlp 健康度
 
-src/app/items/[id]/page.tsx
-└── 展示绑定的 assets 列表，显示下载状态 / 链接
+src/app/sse/attachments/[id]/progress/route.ts   实时进度（含终态保护 + 心跳）
+
+src/app/
+├── attachments/page.tsx                   全局总览（chip 过滤 + 重试 + GC）
+├── items/[id]/page.tsx                    嵌入 <AttachmentsPanel>
+├── runs/[id]/page.tsx                     + 「一键下载附件」按钮
+├── spiders/[name]/page.tsx                + 「开启/关闭自动下载」toggle
+└── settings/page.tsx                      + 「下载」tab（系统依赖 + YouTube 启用开关 + 法律免责）
+
+src/components/items/attachments-panel.tsx 状态徽章 + 进度条 + SSE 实时 + 转 mp3 + 下载/删除
+
+scripts/smoke-download.ts                  端到端烟雾测试（HTTP API + 队列 + 下载 + GET 文件）
 ```
 
-配置：`.env` 加 `ASSET_STORE=local-fs|s3`、`ASSET_STORE_PATH=/data/assets`、（s3）`ASSET_S3_BUCKET` / `ASSET_S3_ENDPOINT` / `ASSET_S3_KEY` / `ASSET_S3_SECRET`；`docker-compose.yml` 本地 FS 模式下挂卷 `./data/assets:/app/data/assets`。
+配置：`.env` 加 `STORAGE_BACKEND=local`（默认）、`STORAGE_LOCAL_ROOT=./data`（默认）、`STORAGE_MAX_GB=50`（默认；0 不限）。
+看板「设置 → 下载」可手动启用 YouTube 下载（默认关，需 yt-dlp 可用）。
+Dockerfile 内置 `ffmpeg + yt-dlp`；本地 dev 用 `brew install ffmpeg yt-dlp`。
+`docker-compose.yml` 把 `data/` 卷挂出（`VOLUME ["/app/data"]` 已加）。
 
-验证：跑一次 video Spider，items 表写入立即，assets 表初始 `status='pending'`；几秒后 download worker 把对应 status 推进到 `ready`，文件真实落到 `data/assets/...`；`/items/[id]` 页面显示视频缩略图 + "下载" / 内联 `<video>` 播放；同一文件第二次抓时 checksum 匹配，跳过重复下载（status='skipped'）；`docker compose down && up` 重启后，正在下载的 asset 自动重试。
+验证（已通过）：
+
+- `pnpm smoke:download` 走完 API → pg-boss → fetcher → storage → markCompleted → GET stream，文件字节数与 DB 吻合
+- 端到端：`payload.media[]` 自动派发 thumbnail 下载 + YouTube `video` item 自动派 yt-dlp，并发被 host-limits 串行化
+- 看板 `/attachments` chip 过滤 / 重试 / GC 全部可用
+- 失败下载可视：`status=failed` 行高亮 + `errorMessage` + 「重试」按钮
 
 ---
 
 ## 工作量一览
 
-| 模块                | 实际位置                               | 工作量                                                    | 状态 |
-| ------------------- | -------------------------------------- | --------------------------------------------------------- | ---- |
-| 爬虫引擎            | `src/lib/crawler` + `shared`           | 引擎抽象 + Storage 接口                                   | ✅   |
-| Postgres + pg-boss  | `src/lib/db` + `scripts/db-*`          | schema + 内联 SQL 迁移 + repository                       | ✅   |
-| 看板 + API + Worker | `src/app` + `src/lib/worker`           | API + 看板 UI + 内置 Worker（占大头）                     | ✅   |
-| Docker Compose      | 根 `Dockerfile` + compose              | 配置为主                                                  | ✅   |
-| Kind 化 + 平台标记  | `src/lib/crawler/kinds` + schema 变更  | 加列 / Zod schema / 一次性 backfill（~10 个文件）         | ⏳   |
-| 真平台 + 凭据管理   | `src/lib/crawler/platforms` + accounts | Platform 抽象 + 第一个平台 + accounts CRUD（~20 个文件）  | ⏳   |
-| 媒体下载管道        | `src/lib/crawler/downloader` + assets  | assets 表 + 下载队列 + 至少 2 种 downloader（~15 个文件） | ⏳   |
+| 模块                | 实际位置                                              | 工作量                                                                                      | 状态 |
+| ------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------- | ---- |
+| 爬虫引擎            | `src/lib/crawler` + `shared`                          | 引擎抽象 + Storage 接口                                                                     | ✅   |
+| Postgres + pg-boss  | `src/lib/db` + `scripts/db-*`                         | schema + 内联 SQL 迁移 + repository                                                         | ✅   |
+| 看板 + API + Worker | `src/app` + `src/lib/worker`                          | API + 看板 UI + 内置 Worker（占大头）                                                       | ✅   |
+| Docker Compose      | 根 `Dockerfile` + compose                             | 配置为主                                                                                    | ✅   |
+| Kind 化 + 平台标记  | `src/lib/crawler/kinds` + schema 变更                 | 加列 / Zod schema / 一次性 backfill（~10 个文件）                                           | ✅   |
+| 真平台 + 凭据管理   | `src/lib/crawler/platforms` + accounts                | Platform 抽象 + 5 个平台 + accounts 加密 CRUD + 自动 ban                                    | ✅   |
+| 媒体下载与转码管道  | `src/lib/downloads` + `src/lib/storage` + attachments | RFC 0002 全套：attachments 表 + http/yt-dlp/ffmpeg + 看板 + autoDownload + GC（~35 个文件） | ✅   |
 
-**顺序约束：** Kind 化是凭据管理和媒体管道的前置（没有 `kind` 字段，下游无法按类型路由）。凭据管理和媒体管道之间逻辑独立，但建议先凭据后媒体：先把"抓元数据"链路打通，再加文件下载，两个新模块同时 debug 定位问题难。
+**顺序约束（已成立）：** Kind 化先于凭据/媒体落地；凭据先于媒体；多平台已横向铺开 5 个。
+后续仍开放的事项见末尾「待完成（仍开放）」清单。
 
 ## 验收清单
 
@@ -292,13 +332,35 @@ src/app/items/[id]/page.tsx
 - [x] 类型检查 + ESLint + Prettier 全过
 - [x] Web 重启后，正在跑的 run 被正确标记为 failed（stale-run cleanup）
 
-### 待完成（多平台扩展）
+### 已完成（媒体下载与转码 — RFC 0002）
 
-- [ ] `items` 表所有行都有 `platform` / `kind` / `sourceId`，且 `(platform, sourceId)` 唯一
-- [ ] 至少支持 1 个真平台（YouTube 或 B 站），能从看板创建 Run
-- [ ] 至少支持 2 种资源 kind（article + video），前端按 kind 渲染
-- [ ] `accounts` 表能加密存储 cookie / OAuth token，Spider Run 时正确注入
-- [ ] 失败/被 ban 的 account 自动降级，看板可见
-- [ ] 视频 Run 完成后，`assets` 表有对应记录，文件真实落到 AssetStore
-- [ ] `download` 队列卡住 / 失败重试不影响 `crawl` 队列
-- [ ] 加第三个平台时，工作量约等于复制 + 改 200 行
+- [x] `attachments` 表 + spider.auto*download + run.attachments*\* 三处 schema 同步
+- [x] http 直链下载（mp4 / mp3 / zip / pdf 等）通过 `download` 队列入库
+- [x] 看板 `/items/:id` 附件面板：手动添加 / 进度条 / 下载文件 / 删除
+- [x] SSE `/sse/attachments/:id/progress` 实时推进度（含心跳 + 终态保护）
+- [x] ffmpeg 视频→mp3 转码（独立 `transcode` 队列），派生 attachment 与源 parent 关系展示
+- [x] yt-dlp 适配 YouTube 视频下载（settings 启用开关 + 法律免责文案 + host 串行化）
+- [x] spider 级 `autoDownload` 开关，run 完成后自动派发 `payload.media[]` + youtube video item
+- [x] run 详情页「一键下载附件」手动批量
+- [x] `/attachments` 总览页（chip 状态过滤 + 失败重试 + N 天前 GC）
+- [x] STORAGE_MAX_GB 配额检测（超额拒绝入队 + 看板提示）
+- [x] Dockerfile 内置 `ffmpeg + yt-dlp`，本地 dev 用 `brew install`
+- [x] `pnpm smoke:download` 端到端烟雾测试
+
+### 已完成（多平台扩展）
+
+- [x] `items` 表所有行都有 `platform` / `kind` / `sourceId`，且 `(platform, sourceId)` 唯一（部分唯一索引 `uniq_items_platform_source`）
+- [x] 至少支持 1 个真平台 —— 实际已支持 5 个：`youtube` / `bilibili` / `xhs` / `weibo` / `douyin`，看板可创建 Run
+- [x] 至少支持 2 种资源 kind —— 实际已支持 5 种：`article` / `video` / `audio` / `image` / `post`，前端按 kind 富展示（`/items/:id`）
+- [x] `accounts` 表加密存储凭据（AES-256-GCM，master key 走 `ACCOUNTS_MASTER_KEY` env），Spider Run 时由 job-handler 自动注入
+- [x] 失败/被 ban 的 account 自动降级：`failure_count` 累计 ≥ 阈值（默认 5）→ `status='banned'`；看板「设置 → 凭据管理」实时显示
+- [x] 视频 Run 完成后，`attachments` 表有对应记录，文件真实落到 `FileStorage`（RFC 0002 落地）
+- [x] `download` 队列卡住 / 失败重试不影响 `crawl` 队列（独立 pg-boss 队列 + retry API）
+- [x] 加第 N 个平台时，工作量约等于复制 + 改 200 行（5 平台已落地，验收 gate 实质通过）
+
+### 待完成（仍开放）
+
+- [ ] **RFC 0001 4 层抽象**：现状是平台目录已按 `platforms/<name>/` 组织，但还没正式抽出 `Platform` 接口对象（`auth/sign/fetcher` 配置驱动）。状态见 [`rfcs/0001-multi-platform.md`](../rfcs/0001-multi-platform.md)
+- [ ] **HLS / DASH 流下载**：当前只支持直链 mp4 + yt-dlp 兜底，原生 HLS 拼包尚未做（RFC 0002 §"非目标"明确交给 yt-dlp）
+- [ ] **S3 / MinIO storage backend**：`STORAGE_BACKEND` env 已留位但只实现了 `local`
+- [ ] **proxy 池健康度自动剔除**：proxy 失败计数 + 自动暂停同样模式（参考 accounts ban 机制）
