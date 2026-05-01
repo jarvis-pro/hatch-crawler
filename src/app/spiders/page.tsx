@@ -118,6 +118,41 @@ const SPIDER_PARAM_SCHEMAS: Record<string, ParamField[]> = {
     },
     { key: 'pageSize', label: '每页结果数', type: 'number', defaultValue: 30 },
   ],
+  'xhs-search': [
+    {
+      key: 'query',
+      label: '搜索关键词',
+      required: true,
+      placeholder: '穿搭 旅行',
+      hint: 'Cookie 需在"设置 → 凭据管理"中添加，平台选 xhs、类型选 Cookie',
+    },
+    { key: 'maxPages', label: '最多翻页数', type: 'number', defaultValue: 5 },
+    {
+      key: 'sort',
+      label: '排序方式',
+      type: 'select',
+      options: ['general', 'time_descending', 'popularity_descending'],
+      defaultValue: 'general',
+    },
+    {
+      key: 'noteType',
+      label: '笔记类型',
+      type: 'select',
+      options: ['0', '1', '2'],
+      defaultValue: '0',
+      hint: '0=不限，1=视频，2=图文',
+    },
+  ],
+  'xhs-user-notes': [
+    {
+      key: 'userId',
+      label: '用户 ID',
+      required: true,
+      placeholder: '5f1234abcd...',
+      hint: '小红书个人主页 URL 中 /user/profile/ 后的字符串',
+    },
+    { key: 'maxPages', label: '最多翻页数', type: 'number', defaultValue: 10 },
+  ],
 };
 
 /** 根据注册名推荐显示名 */
@@ -127,6 +162,8 @@ const SPIDER_DISPLAY_NAMES: Record<string, string> = {
   'youtube-search': 'YouTube 搜索',
   'bilibili-user-videos': 'Bilibili UP 主投稿',
   'bilibili-search': 'Bilibili 搜索',
+  'xhs-search': '小红书搜索',
+  'xhs-user-notes': '小红书用户笔记',
 };
 
 const PLATFORM_BADGE: Record<string, string> = {
@@ -414,12 +451,138 @@ function NewSpiderDialog({
   );
 }
 
+// ── describeCron — cron 表达式转中文描述 ─────────────────────────────────────
+
+function describeCron(expr: string): string {
+  const parts = expr.trim().split(/\s+/);
+  if (parts.length !== 5) return expr;
+  const [min, hour, dom, , dow] = parts;
+  if (min === '*' && hour === '*') return '每分钟';
+  if (min?.startsWith('*/') && hour === '*') return `每 ${min.slice(2)} 分钟`;
+  if (hour?.startsWith('*/') && min === '0') return `每 ${hour.slice(2)} 小时整`;
+  const h = hour !== '*' ? `${hour}:${(min ?? '0').padStart(2, '0')}` : null;
+  if (dom === '*' && dow === '*' && h) return `每天 ${h}`;
+  const DOW: Record<string, string> = {
+    '0': '周日',
+    '1': '周一',
+    '2': '周二',
+    '3': '周三',
+    '4': '周四',
+    '5': '周五',
+    '6': '周六',
+    '7': '周日',
+  };
+  if (dom === '*' && dow !== '*' && h) return `每${dow ? (DOW[dow] ?? `周${dow}`) : '?'} ${h}`;
+  if (dom !== '*' && dow === '*' && h) return `每月 ${dom} 日 ${h}`;
+  return expr;
+}
+
+// ── CronDialog ────────────────────────────────────────────────────────────────
+
+const CRON_PRESETS = [
+  { label: '每小时', value: '0 * * * *' },
+  { label: '每天 09:00', value: '0 9 * * *' },
+  { label: '每天 00:00', value: '0 0 * * *' },
+  { label: '每 6 小时', value: '0 */6 * * *' },
+  { label: '每周一 09:00', value: '0 9 * * 1' },
+  { label: '每月 1 日', value: '0 9 1 * *' },
+];
+
+function CronDialog({ spider, onClose }: { spider: Spider; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [expr, setExpr] = useState(spider.cronSchedule ?? '');
+
+  const save = useMutation({
+    mutationFn: () =>
+      api.put<Spider>(`/api/spiders/${spider.name}`, {
+        displayName: spider.displayName,
+        startUrls: spider.startUrls,
+        allowedHosts: spider.allowedHosts,
+        maxDepth: spider.maxDepth,
+        concurrency: spider.concurrency,
+        perHostIntervalMs: spider.perHostIntervalMs,
+        enabled: spider.enabled,
+        platform: spider.platform,
+        defaultParams: spider.defaultParams,
+        cronSchedule: expr.trim() || null,
+      }),
+    onSuccess: () => {
+      toast.success(expr.trim() ? `调度已设置：${expr.trim()}` : '调度已清除');
+      void qc.invalidateQueries({ queryKey: ['spiders'] });
+      onClose();
+    },
+    onError: (err) => toast.error(String(err)),
+  });
+
+  const preview = expr.trim() ? describeCron(expr.trim()) : '—';
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+    >
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>定时调度 — {spider.name}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Cron 表达式</label>
+            <Input
+              placeholder="0 9 * * * （留空则取消调度）"
+              value={expr}
+              onChange={(e) => setExpr(e.target.value)}
+              className="font-mono"
+            />
+            <p className="text-xs text-muted-foreground">
+              预览：<span className="font-medium text-foreground">{preview}</span>
+            </p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">快捷选择</p>
+            <div className="flex flex-wrap gap-1">
+              {CRON_PRESETS.map((p) => (
+                <button
+                  key={p.value}
+                  type="button"
+                  onClick={() => setExpr(p.value)}
+                  className="rounded border px-2 py-0.5 text-xs hover:bg-muted"
+                >
+                  {p.label}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setExpr('')}
+                className="rounded border border-red-200 px-2 py-0.5 text-xs text-red-600 hover:bg-red-50"
+              >
+                清除
+              </button>
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            取消
+          </Button>
+          <Button disabled={save.isPending} onClick={() => save.mutate()}>
+            {save.isPending ? '保存中…' : '保存'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── SpidersPage ───────────────────────────────────────────────────────────────
 
 export default function SpidersPage() {
   const qc = useQueryClient();
   const [runTarget, setRunTarget] = useState<Spider | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [cronTarget, setCronTarget] = useState<Spider | null>(null);
 
   const { data: spiders = [], isLoading } = useQuery({
     queryKey: ['spiders'],
@@ -511,7 +674,19 @@ export default function SpidersPage() {
                       </Badge>
                     )}
                   </TableCell>
-                  <TableCell className="font-mono text-xs">{s.cronSchedule ?? '—'}</TableCell>
+                  <TableCell>
+                    <button
+                      className="font-mono text-xs hover:underline"
+                      onClick={() => setCronTarget(s)}
+                      title="点击编辑调度"
+                    >
+                      {s.cronSchedule ? (
+                        <span className="text-foreground">{s.cronSchedule}</span>
+                      ) : (
+                        <span className="text-muted-foreground">— 设置</span>
+                      )}
+                    </button>
+                  </TableCell>
                   <TableCell>
                     <button
                       className="text-xs text-muted-foreground hover:text-foreground"
@@ -535,6 +710,7 @@ export default function SpidersPage() {
 
       {runTarget && <RunParamsDialog spider={runTarget} onClose={() => setRunTarget(null)} />}
       {showCreate && <NewSpiderDialog registry={registry} onClose={() => setShowCreate(false)} />}
+      {cronTarget && <CronDialog spider={cronTarget} onClose={() => setCronTarget(null)} />}
     </>
   );
 }
