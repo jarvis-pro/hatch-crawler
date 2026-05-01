@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getDb, spiderRepo } from '@/lib/db';
 import { env } from '@/lib/env';
 import { fail, failInternal, failValidation, ok } from '@/lib/api/response';
+import { syncSpiderSchedule } from '@/lib/worker';
 
 const updateSchema = z.object({
   displayName: z.string().min(1).max(128),
@@ -49,6 +50,12 @@ export async function PUT(req: Request, { params }: RouteContext): Promise<Respo
       name,
       ...parsed.data,
     });
+
+    // 同步 pg-boss 调度（新增 / 更新 / 清除）
+    await syncSpiderSchedule(name, parsed.data.cronSchedule ?? null).catch((err) => {
+      console.warn('[api] syncSpiderSchedule failed:', err);
+    });
+
     return ok(updated);
   } catch (err) {
     return failInternal(err);
