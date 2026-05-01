@@ -425,6 +425,11 @@ function RunParamsDialog({ spider, onClose }: { spider: Spider; onClose: () => v
 
 // ── NewSpiderDialog ───────────────────────────────────────────────────────────
 
+/** 将 Spider 类型名转换为合法的名称建议（仅供初始填充） */
+function suggestName(type: string): string {
+  return type;
+}
+
 function NewSpiderDialog({
   registry,
   onClose,
@@ -433,30 +438,40 @@ function NewSpiderDialog({
   onClose: () => void;
 }) {
   const qc = useQueryClient();
-  const firstName = registry[0]?.name ?? '';
-  const [selectedName, setSelectedName] = useState(firstName);
-  const [displayName, setDisplayName] = useState(SPIDER_DISPLAY_NAMES[firstName] ?? firstName);
+  const firstType = registry[0]?.name ?? '';
+  // selectedType：注册表类型键（"youtube-channel-videos" 等）
+  const [selectedType, setSelectedType] = useState(firstType);
+  // customName：用户自定义的唯一标识符（PK），默认与类型名相同
+  const [customName, setCustomName] = useState(suggestName(firstType));
+  // 记录用户是否手动修改过 customName，如未修改则跟随类型自动更新
+  const [nameManuallyEdited, setNameManuallyEdited] = useState(false);
+  const [displayName, setDisplayName] = useState(SPIDER_DISPLAY_NAMES[firstType] ?? firstType);
   const [enabled, setEnabled] = useState(true);
-  const [params, setParams] = useState<Record<string, unknown>>(defaultParamsFor(firstName));
+  const [params, setParams] = useState<Record<string, unknown>>(defaultParamsFor(firstType));
   // JSON 导入面板
   const [showImport, setShowImport] = useState(false);
   const [importJson, setImportJson] = useState('');
   const [importError, setImportError] = useState('');
 
-  const handleTypeChange = (name: string) => {
-    setSelectedName(name);
-    setDisplayName(SPIDER_DISPLAY_NAMES[name] ?? name);
-    setParams(defaultParamsFor(name));
+  const handleTypeChange = (type: string) => {
+    setSelectedType(type);
+    setDisplayName(SPIDER_DISPLAY_NAMES[type] ?? type);
+    setParams(defaultParamsFor(type));
+    // 若用户还未手动编辑名称，则自动跟随类型更新
+    if (!nameManuallyEdited) {
+      setCustomName(suggestName(type));
+    }
   };
 
   function handleImport() {
     setImportError('');
     try {
       const obj = JSON.parse(importJson) as Record<string, unknown>;
-      const name = String(obj.name ?? '');
-      if (name && registry.some((e) => e.name === name)) {
-        setSelectedName(name);
-        setDisplayName(String(obj.displayName ?? SPIDER_DISPLAY_NAMES[name] ?? name));
+      const type = String(obj.name ?? obj.spiderType ?? '');
+      if (type && registry.some((e) => e.name === type)) {
+        setSelectedType(type);
+        if (!nameManuallyEdited) setCustomName(suggestName(type));
+        setDisplayName(String(obj.displayName ?? SPIDER_DISPLAY_NAMES[type] ?? type));
       }
       if (obj.displayName) setDisplayName(String(obj.displayName));
       if (typeof obj.enabled === 'boolean') setEnabled(obj.enabled);
@@ -472,11 +487,15 @@ function NewSpiderDialog({
   }
 
   // 从注册表条目里取 platform，自动写入 DB
-  const selectedEntry = registry.find((e) => e.name === selectedName);
+  const selectedEntry = registry.find((e) => e.name === selectedType);
+
+  // 名称格式校验：只允许小写字母、数字、连字符，长度 1-64
+  const nameValid = /^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$|^[a-z0-9]$/.test(customName.trim());
 
   const save = useMutation({
     mutationFn: () =>
-      api.put<Spider>(`/api/spiders/${selectedName}`, {
+      api.put<Spider>(`/api/spiders/${customName.trim()}`, {
+        spiderType: selectedType,
         displayName,
         startUrls: [],
         enabled,
@@ -492,7 +511,10 @@ function NewSpiderDialog({
   });
 
   const valid =
-    displayName.trim().length > 0 && selectedName.length > 0 && paramsValid(selectedName, params);
+    nameValid &&
+    displayName.trim().length > 0 &&
+    selectedType.length > 0 &&
+    paramsValid(selectedType, params);
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -543,7 +565,7 @@ function NewSpiderDialog({
               <div className="space-y-1">
                 <label className="text-sm font-medium">Spider 类型</label>
                 <select
-                  value={selectedName}
+                  value={selectedType}
                   onChange={(e) => handleTypeChange(e.target.value)}
                   className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
                 >
@@ -554,6 +576,34 @@ function NewSpiderDialog({
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Spider 名称（唯一标识） */}
+              <div className="space-y-1">
+                <label className="text-sm font-medium">
+                  Spider 名称
+                  <span className="ml-1 text-xs font-normal text-muted-foreground">
+                    （唯一 ID，可自定义）
+                  </span>
+                </label>
+                <Input
+                  value={customName}
+                  onChange={(e) => {
+                    setCustomName(e.target.value);
+                    setNameManuallyEdited(true);
+                  }}
+                  placeholder="my-youtube-channel"
+                  className={!nameValid && customName.length > 0 ? 'border-red-400' : ''}
+                />
+                {!nameValid && customName.length > 0 && (
+                  <p className="text-xs text-red-500">
+                    只允许小写字母、数字和连字符（-），且不能以连字符开头或结尾
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  同一类型可创建多个实例，用不同名称区分。例如两个 YouTube 频道可分别命名为{' '}
+                  <code>yt-tech</code> 和 <code>yt-gaming</code>。
+                </p>
               </div>
 
               {/* 显示名称 */}
@@ -569,7 +619,7 @@ function NewSpiderDialog({
               {/* 默认参数 */}
               <div className="space-y-1">
                 <label className="text-sm font-medium">默认参数（运行时可覆盖）</label>
-                <ParamsForm spiderName={selectedName} value={params} onChange={setParams} />
+                <ParamsForm spiderName={selectedType} value={params} onChange={setParams} />
               </div>
 
               {/* 启用 */}
@@ -642,6 +692,7 @@ function CronDialog({ spider, onClose }: { spider: Spider; onClose: () => void }
   const save = useMutation({
     mutationFn: () =>
       api.put<Spider>(`/api/spiders/${spider.name}`, {
+        spiderType: spider.spiderType,
         displayName: spider.displayName,
         startUrls: spider.startUrls,
         allowedHosts: spider.allowedHosts,
@@ -745,6 +796,7 @@ export default function SpidersPage() {
   const toggleEnabled = useMutation({
     mutationFn: (s: Spider) =>
       api.put<Spider>(`/api/spiders/${s.name}`, {
+        spiderType: s.spiderType,
         displayName: s.displayName,
         startUrls: s.startUrls,
         allowedHosts: s.allowedHosts,
@@ -808,6 +860,9 @@ export default function SpidersPage() {
                     <Link href={`/spiders/${s.name}`} className="hover:underline">
                       {s.name}
                     </Link>
+                    {s.spiderType && s.spiderType !== s.name && (
+                      <div className="mt-0.5 text-muted-foreground">{s.spiderType}</div>
+                    )}
                   </TableCell>
                   <TableCell>{s.displayName}</TableCell>
                   <TableCell>

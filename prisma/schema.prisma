@@ -63,6 +63,9 @@ enum AttachmentStatus {
 
 model Spider {
   name              String   @id @db.VarChar(64)
+  /// 注册表中的 Spider 类型键（如 "youtube-channel-videos"）。
+  /// name 是用户自定义的唯一标识符，spiderType 才是对应的引擎实现。
+  spiderType        String   @default("") @map("spider_type") @db.VarChar(64)
   displayName       String   @map("display_name") @db.VarChar(128)
   description       String?
   startUrls         Json     @map("start_urls")

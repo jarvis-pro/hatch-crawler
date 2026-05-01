@@ -6,6 +6,8 @@ import { fail, failInternal, failValidation, ok } from '@/lib/api/response';
 import { syncSpiderSchedule } from '@/lib/worker';
 
 const updateSchema = z.object({
+  /** 注册表类型键（如 "youtube-channel-videos"）。不传时回退为路由参数 name。 */
+  spiderType: z.string().min(1).max(64).optional(),
   displayName: z.string().min(1).max(128),
   description: z.string().nullish(),
   // API-based spider（YouTube 等）动态构造 startUrls，DB 里允许存空数组

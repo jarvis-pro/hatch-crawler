@@ -177,6 +177,14 @@ END $$`,
   // ── Phase X：Spider 连续失败计数 ─────────────────────────────────────────
   `ALTER TABLE "spiders" ADD COLUMN IF NOT EXISTS "consecutive_failures" integer NOT NULL DEFAULT 0`,
 
+  // ── Spider 多实例支持：新增 spider_type 列，将注册表类型键与用户自定义名分离 ──
+  // spider_type 存放注册表中的引擎类型键（如 youtube-channel-videos）；
+  // name 保持为用户自定义的唯一标识符（PK）。
+  // 存量记录回填：spider_type = name（原来两者相同）。
+  `ALTER TABLE "spiders" ADD COLUMN IF NOT EXISTS "spider_type" varchar(64) NOT NULL DEFAULT ''`,
+  // 回填：仅对 spider_type 仍为空字符串（即刚加列或历史数据）的行执行，幂等
+  `UPDATE "spiders" SET "spider_type" = "name" WHERE "spider_type" = ''`,
+
   // ── RFC 0002 Phase A：附件下载（attachments 表 + spiders.auto_download + runs.attachments_*）──
 
   `DO $$ BEGIN

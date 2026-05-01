@@ -28,10 +28,22 @@ export async function handleCrawlJob(
 ): Promise<void> {
   const { runId, spider, overrides } = data;
 
-  const entry = getSpiderEntry(spider);
+  // spider = spiders.name（用户自定义唯一标识）。
+  // 先取 spider 行拿到 spiderType（注册表键），再查注册表。
+  // 如果 spiderType 为空（迁移前的存量数据），则直接用 name 作为注册表键（保持向后兼容）。
+  const spiderRow = await spiderRepo.getByName(db, spider).catch(() => null);
+  const registryKey =
+    spiderRow?.spiderType && spiderRow.spiderType.length > 0 ? spiderRow.spiderType : spider;
+
+  const entry = getSpiderEntry(registryKey);
   if (!entry) {
-    await runRepo.markFinished(db, runId, 'failed', `unknown spider: ${spider}`);
-    throw new Error(`unknown spider: ${spider}`);
+    await runRepo.markFinished(
+      db,
+      runId,
+      'failed',
+      `unknown spider type: ${registryKey} (spider: ${spider})`,
+    );
+    throw new Error(`unknown spider type: ${registryKey} (spider: ${spider})`);
   }
 
   await runRepo.markStarted(db, runId);

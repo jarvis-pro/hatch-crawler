@@ -12,20 +12,49 @@ function shape(row: {
     startUrls: row.startUrls as string[],
     allowedHosts: row.allowedHosts as string[],
     defaultParams: (row.defaultParams ?? {}) as Record<string, unknown>,
+    // spiderType 由调用方在 spread 前注入（Prisma generate 前 client 不认识该列）
+    spiderType: (row.spiderType as string | undefined) ?? (row.name as string),
   } as Spider;
+}
+
+/**
+ * 用原始 SQL 批量取 spider_type，返回 name → spiderType 映射。
+ * Prisma generate 运行后该函数可退役，由 Prisma client 直接读取。
+ */
+async function fetchSpiderTypes(db: Db, names?: string[]): Promise<Map<string, string>> {
+  const rows =
+    names && names.length > 0
+      ? await db.$queryRawUnsafe<{ name: string; spider_type: string }[]>(
+          `SELECT "name", "spider_type" FROM "spiders" WHERE "name" = ANY($1::text[])`,
+          names,
+        )
+      : await db.$queryRawUnsafe<{ name: string; spider_type: string }[]>(
+          `SELECT "name", "spider_type" FROM "spiders"`,
+        );
+  return new Map(rows.map((r) => [r.name, r.spider_type ?? r.name]));
 }
 
 export async function listAll(db: Db): Promise<Spider[]> {
   const rows = await db.spider.findMany({ orderBy: { name: 'asc' } });
-  return rows.map(shape);
+  const typeMap = await fetchSpiderTypes(
+    db,
+    rows.map((r) => r.name),
+  );
+  return rows.map((row) => shape({ ...row, spiderType: typeMap.get(row.name) ?? row.name }));
 }
 
 export async function getByName(db: Db, name: string): Promise<Spider | null> {
   const row = await db.spider.findUnique({ where: { name } });
-  return row ? shape(row) : null;
+  if (!row) return null;
+  const typeMap = await fetchSpiderTypes(db, [name]);
+  return shape({ ...row, spiderType: typeMap.get(name) ?? name });
 }
 
 export async function upsert(db: Db, input: NewSpider): Promise<Spider> {
+  const spiderType = input.spiderType ?? input.name;
+
+  // spiderType 不放入 base：Prisma generate 运行前 client 不认识 spider_type 列，
+  // 放进去会在运行时抛 "Unknown argument" 错误。改为 upsert 后单独用原始 SQL 写入。
   const base = {
     displayName: input.displayName,
     description: input.description ?? null,
@@ -36,7 +65,6 @@ export async function upsert(db: Db, input: NewSpider): Promise<Spider> {
     perHostIntervalMs: input.perHostIntervalMs ?? 500,
     enabled: input.enabled ?? true,
     cronSchedule: input.cronSchedule ?? null,
-    // platform 写入：允许传 null（通用爬虫），传值时直接存
     platform: input.platform ?? null,
     defaultParams: input.defaultParams ?? {},
     autoDownload: input.autoDownload ?? false,
@@ -49,7 +77,14 @@ export async function upsert(db: Db, input: NewSpider): Promise<Spider> {
     update: { ...base, updatedAt: new Date() },
   })) as Parameters<typeof shape>[0];
 
-  return shape(row);
+  // spider_type 列在 db:generate 前 Prisma client 不识别，单独用原始 SQL 写入
+  await db.$executeRawUnsafe(
+    `UPDATE "spiders" SET "spider_type" = $1 WHERE "name" = $2`,
+    spiderType,
+    input.name,
+  );
+
+  return shape({ ...row, spiderType });
 }
 
 export async function remove(db: Db, name: string): Promise<void> {

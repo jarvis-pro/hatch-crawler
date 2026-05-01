@@ -51,6 +51,11 @@ export type Spider = Omit<PrismaSpider, 'startUrls' | 'allowedHosts' | 'defaultP
   startUrls: string[];
   allowedHosts: string[];
   defaultParams: Record<string, unknown>;
+  /**
+   * 注册表类型键（如 "youtube-channel-videos"）。
+   * prisma generate 运行后由 PrismaSpider 自动提供；这里显式声明保证 generate 前也能编译。
+   */
+  spiderType: string;
 };
 
 export type Run = Omit<PrismaRun, 'overrides'> & {
@@ -81,6 +86,8 @@ export type Attachment = Omit<PrismaAttachment, 'byteSize'> & {
 // repository create-input 速记
 export type NewSpider = {
   name: string;
+  /** 注册表中的 Spider 类型键，不传时回退为 name（向后兼容）。 */
+  spiderType?: string;
   displayName: string;
   description?: string | null;
   startUrls: string[];

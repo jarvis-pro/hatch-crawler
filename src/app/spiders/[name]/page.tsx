@@ -84,6 +84,7 @@ export default function SpiderDetailPage({ params }: { params: Promise<{ name: s
       if (!spider) throw new Error('spider not loaded');
       // PUT 是全量更新，必须把所有现有字段透传，否则会被 schema 默认值覆盖。
       return api.put<Spider>(`/api/spiders/${name}`, {
+        spiderType: spider.spiderType,
         displayName: spider.displayName,
         description: spider.description,
         startUrls: spider.startUrls,
@@ -154,6 +155,9 @@ export default function SpiderDetailPage({ params }: { params: Promise<{ name: s
         <div>
           <h1 className="text-xl font-semibold">{spider.displayName}</h1>
           <p className="font-mono text-sm text-muted-foreground">{spider.name}</p>
+          {spider.spiderType && spider.spiderType !== spider.name && (
+            <p className="text-xs text-muted-foreground">类型：{spider.spiderType}</p>
+          )}
         </div>
         <div className="flex gap-2">
           <Button
