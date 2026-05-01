@@ -1,7 +1,7 @@
 import 'server-only';
 import type { CrawlerEvent } from '@/lib/shared';
 import { subscribe } from '@/lib/worker/index';
-import { getDb, runRepo } from '@/lib/db';
+import { getDb, runRepo, eventRepo } from '@/lib/db';
 import { env } from '@/lib/env';
 
 export const dynamic = 'force-dynamic';
@@ -86,16 +86,80 @@ export async function GET(_req: Request, { params }: Ctx): Promise<Response> {
         return;
       }
 
+      // ── 竞态修复：SSE 连接建立时，job 可能已经运行了一段时间，
+      //    EventBus 里的事件早就发完了（in-memory，无回放）。
+      //    策略：
+      //    1. 先订阅 EventBus，把收到的 live 事件缓冲起来。
+      //    2. 从 DB 读取已入库的历史事件，发给前端（"补帧"）。
+      //    3. 刷新缓冲：跳过时间戳落在历史范围内的重复事件。
+      //    4. 之后恢复正常 live 转发。
+
+      type Buffered = { evtName: 'log' | 'done'; data: CrawlerEvent };
+      const liveBuffer: Buffered[] = [];
+      let historicalFlushed = false;
+
       const unsubscribe = subscribe(runId, (event: CrawlerEvent) => {
+        if (!historicalFlushed) {
+          liveBuffer.push({ evtName: event.type === 'done' ? 'done' : 'log', data: event });
+          return;
+        }
         if (event.type === 'done') {
           send('done', event);
-          // 让 client 自己关闭；server 端这里收尾
           unsubscribe();
           close();
         } else {
           send('log', event);
         }
       });
+
+      // 异步：读历史 → 补帧 → 刷缓冲
+      void (async () => {
+        try {
+          const { data: rows } = await eventRepo.list(db, { runId, pageSize: 500 });
+          const lastHistoricalAt =
+            rows.length > 0 ? rows[rows.length - 1]!.occurredAt.getTime() : 0;
+
+          // 把 DB 行还原成足够前端 describe() 用的 CrawlerEvent 形状
+          for (const row of rows) {
+            const synthetic = {
+              level: row.level,
+              type: row.type,
+              at: row.occurredAt.getTime(),
+              ...(row.payload ?? {}),
+            } as CrawlerEvent;
+            send('log', synthetic);
+          }
+
+          // 刷缓冲：跳过已被历史覆盖的事件（时间戳 ≤ 最后一条历史记录）
+          historicalFlushed = true;
+          for (const { evtName, data } of liveBuffer) {
+            if (data.at <= lastHistoricalAt) continue; // 历史已含，去重
+            if (evtName === 'done') {
+              send('done', data);
+              unsubscribe();
+              close();
+              return;
+            } else {
+              send('log', data);
+            }
+          }
+          liveBuffer.length = 0;
+        } catch {
+          // 历史读取失败：降级为只转发 live 事件
+          historicalFlushed = true;
+          for (const { evtName, data } of liveBuffer) {
+            if (evtName === 'done') {
+              send('done', data);
+              unsubscribe();
+              close();
+              return;
+            } else {
+              send('log', data);
+            }
+          }
+          liveBuffer.length = 0;
+        }
+      })();
     },
     cancel() {
       // 客户端断开，自动收尾在 start 的 unsubscribe / clearInterval 里没法访问到
