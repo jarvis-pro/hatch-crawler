@@ -53,16 +53,18 @@ const QUEUE_CRON_PREFIX = 'crawl-cron:';
  * 注册或更新单条 Spider 的 cron 调度。
  * - cronExpression 为 null / 空串：取消调度
  * - 幂等：重复调用安全
+ *
+ * @param spiderId   spiders.id UUID（作为 pg-boss 队列名后缀，保证多实例唯一）
  */
 export async function syncSpiderSchedule(
-  spiderName: string,
+  spiderId: string,
   cronExpression: string | null,
 ): Promise<void> {
   const { boss, ready } = getBoss(env.databaseUrl);
   await ready;
   const db = getDb(env.databaseUrl);
 
-  const queueName = `${QUEUE_CRON_PREFIX}${spiderName}`;
+  const queueName = `${QUEUE_CRON_PREFIX}${spiderId}`;
 
   if (!cronExpression) {
     try {
@@ -74,14 +76,20 @@ export async function syncSpiderSchedule(
   }
 
   await boss.createQueue(queueName);
-  await boss.schedule(queueName, cronExpression, { spider: spiderName });
+  await boss.schedule(queueName, cronExpression, { spiderId });
 
   // 保证有 work 处理器
-  await boss.work<{ spider: string }>(queueName, async ([job]) => {
+  await boss.work<{ spiderId: string }>(queueName, async ([job]) => {
     if (!job) return;
-    const { spider } = job.data;
-    const run = await runRepo.create(db, { spiderName: spider, triggerType: 'cron' });
-    await boss.send(QUEUE_CRAWL, { runId: run.id, spider } satisfies CrawlJobData);
+    const { spiderId: sid } = job.data;
+    const spider = await spiderRepo.getById(db, sid);
+    if (!spider) return; // Spider 已被删除，跳过
+    const run = await runRepo.create(db, {
+      spiderId: sid,
+      spiderName: spider.name,
+      triggerType: 'cron',
+    });
+    await boss.send(QUEUE_CRAWL, { runId: run.id, spiderId: sid } satisfies CrawlJobData);
   });
 }
 
@@ -153,8 +161,8 @@ export async function startWorker(): Promise<void> {
   const allSpiders = await spiderRepo.listAll(db);
   for (const spider of allSpiders) {
     if (spider.cronSchedule) {
-      await syncSpiderSchedule(spider.name, spider.cronSchedule).catch((err) => {
-        console.warn(`[worker] failed to register schedule for ${spider.name}:`, err);
+      await syncSpiderSchedule(spider.id, spider.cronSchedule).catch((err) => {
+        console.warn(`[worker] failed to register schedule for ${spider.id}:`, err);
       });
     }
   }

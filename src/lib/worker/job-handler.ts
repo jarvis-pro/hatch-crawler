@@ -26,14 +26,11 @@ export async function handleCrawlJob(
   data: CrawlJobData,
   signal: AbortSignal,
 ): Promise<void> {
-  const { runId, spider, overrides } = data;
+  const { runId, spiderId, overrides } = data;
 
-  // spider = spiders.name（用户自定义唯一标识）。
-  // 先取 spider 行拿到 spiderType（注册表键），再查注册表。
-  // 如果 spiderType 为空（迁移前的存量数据），则直接用 name 作为注册表键（保持向后兼容）。
-  const spiderRow = await spiderRepo.getByName(db, spider).catch(() => null);
-  const registryKey =
-    spiderRow?.spiderType && spiderRow.spiderType.length > 0 ? spiderRow.spiderType : spider;
+  // spiderId = spiders.id UUID。取 spider 行，用 spider.type 作为注册表键查找实现类。
+  const spiderRow = await spiderRepo.getById(db, spiderId).catch(() => null);
+  const registryKey = spiderRow?.type ?? spiderId;
 
   const entry = getSpiderEntry(registryKey);
   if (!entry) {
@@ -41,9 +38,9 @@ export async function handleCrawlJob(
       db,
       runId,
       'failed',
-      `unknown spider type: ${registryKey} (spider: ${spider})`,
+      `unknown spider type: ${registryKey} (spiderId: ${spiderId})`,
     );
-    throw new Error(`unknown spider type: ${registryKey} (spider: ${spider})`);
+    throw new Error(`unknown spider type: ${registryKey} (spiderId: ${spiderId})`);
   }
 
   await runRepo.markStarted(db, runId);
@@ -133,7 +130,7 @@ export async function handleCrawlJob(
     // 提前检查 startUrls，避免静默完成：若为空说明必填参数（如 apiKey / query / channelId）未配置
     if (spiderInstance.startUrls.length === 0) {
       throw new Error(
-        `spider "${spider}" 的 startUrls 为空——请检查平台凭据（Accounts 页）及必填参数是否已配置。`,
+        `spider "${registryKey}" 的 startUrls 为空——请检查平台凭据（Accounts 页）及必填参数是否已配置。`,
       );
     }
 
@@ -144,12 +141,11 @@ export async function handleCrawlJob(
     await runRepo.markFinished(db, runId, finalStatus);
 
     // 成功时重置连续失败计数
-    void spiderRepo.resetFailures(db, spider).catch(() => {});
-    void notifyWebhook(db, runId, spider, finalStatus).catch(() => {});
+    void spiderRepo.resetFailures(db, spiderId).catch(() => {});
+    void notifyWebhook(db, runId, registryKey, finalStatus).catch(() => {});
 
     // RFC 0002 Phase D：autoDownload 自动派发本次 run 的附件
     if (finalStatus === 'completed') {
-      const spiderRow = await spiderRepo.getByName(db, spider).catch(() => null);
       if (spiderRow?.autoDownload) {
         const allowYoutube = await isYoutubeDownloadEnabled(db);
         const summary = await dispatchForRun(db, runId, { allowYoutube }).catch((err: unknown) => {
@@ -174,17 +170,17 @@ export async function handleCrawlJob(
 
     // 递增连续失败计数，超阈值自动停用并发送告警
     const failureResult = await spiderRepo
-      .recordFailure(db, spider, maxConsecutiveFailures)
+      .recordFailure(db, spiderId, maxConsecutiveFailures)
       .catch(() => null);
 
-    void notifyWebhook(db, runId, spider, 'failed', message).catch(() => {});
+    void notifyWebhook(db, runId, registryKey, 'failed', message).catch(() => {});
 
     if (failureResult?.disabled) {
       // 额外推送"停用告警"webhook
       void notifyWebhook(
         db,
         runId,
-        spider,
+        registryKey,
         'auto_disabled',
         `连续失败 ${failureResult.consecutiveFailures} 次，已自动停用`,
       ).catch(() => {});
