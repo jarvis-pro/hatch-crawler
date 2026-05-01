@@ -46,25 +46,99 @@ const KIND_COLORS: Record<string, string> = {
 
 // ── 导出工具 ──────────────────────────────────────────────────────────────────
 
-function itemsToCsv(items: Item[]): string {
-  const headers = ['id', 'platform', 'kind', 'spider', 'url', 'sourceId', 'title', 'fetchedAt'];
-  const escape = (v: unknown) => {
-    const s = v == null ? '' : String(v);
-    return s.includes(',') || s.includes('"') || s.includes('\n')
-      ? `"${s.replace(/"/g, '""')}"`
-      : s;
+const EXPORT_COLUMNS = [
+  { key: 'id', label: 'ID' },
+  { key: 'platform', label: '平台' },
+  { key: 'kind', label: '类型' },
+  { key: 'spider', label: 'Spider' },
+  { key: 'url', label: 'URL' },
+  { key: 'sourceId', label: '来源 ID' },
+  { key: 'title', label: '标题' },
+  { key: 'description', label: '简介' },
+  { key: 'author', label: '作者' },
+  { key: 'publishedAt', label: '发布时间' },
+  { key: 'fetchedAt', label: '抓取时间' },
+] as const;
+
+function extractRow(it: Item): Record<string, string> {
+  const p = (it.payload ?? {}) as Record<string, unknown>;
+  const author =
+    typeof p.author === 'object' && p.author !== null
+      ? (((p.author as Record<string, unknown>).name as string | undefined) ?? '')
+      : String(p.author ?? '');
+  return {
+    id: String(it.id),
+    platform: it.platform ?? '',
+    kind: it.kind ? (KIND_LABELS[it.kind] ?? it.kind) : '',
+    spider: it.spider ?? '',
+    url: it.url ?? '',
+    sourceId: it.sourceId ?? '',
+    title: (p.title as string | undefined) ?? '',
+    description: (p.description as string | undefined) ?? '',
+    author,
+    publishedAt: (p.publishedAt as string | undefined) ?? '',
+    fetchedAt: new Date(it.fetchedAt).toLocaleString(),
   };
+}
+
+/** 生成 SpreadsheetML（.xls）——无需第三方库，Excel / WPS 可直接打开 */
+function itemsToXls(items: Item[]): string {
+  const esc = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  const header = EXPORT_COLUMNS.map(
+    (c) => `<Cell><Data ss:Type="String">${esc(c.label)}</Data></Cell>`,
+  ).join('');
+
+  const dataRows = items
+    .map((it) => {
+      const row = extractRow(it);
+      const cells = EXPORT_COLUMNS.map(
+        (c) => `<Cell><Data ss:Type="String">${esc(row[c.key] ?? '')}</Data></Cell>`,
+      ).join('');
+      return `<Row>${cells}</Row>`;
+    })
+    .join('');
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <Styles>
+    <Style ss:ID="header">
+      <Font ss:Bold="1"/>
+      <Interior ss:Color="#E8F0FE" ss:Pattern="Solid"/>
+    </Style>
+  </Styles>
+  <Worksheet ss:Name="条目列表">
+    <Table>
+      <Row>${header
+        .split('</Cell>')
+        .filter(Boolean)
+        .map((c) => c.replace('<Cell>', '<Cell ss:StyleID="header">') + '</Cell>')
+        .join('')}</Row>
+      ${dataRows}
+    </Table>
+  </Worksheet>
+</Workbook>`;
+}
+
+function itemsToCsv(items: Item[]): string {
+  const escape = (v: string) => {
+    return v.includes(',') || v.includes('"') || v.includes('\n')
+      ? `"${v.replace(/"/g, '""')}"`
+      : v;
+  };
+  const header = EXPORT_COLUMNS.map((c) => escape(c.label)).join(',');
   const rows = items.map((it) => {
-    const title = (it.payload as { title?: string } | null)?.title ?? '';
-    return [it.id, it.platform, it.kind, it.spider, it.url, it.sourceId, title, it.fetchedAt]
-      .map(escape)
-      .join(',');
+    const row = extractRow(it);
+    return EXPORT_COLUMNS.map((c) => escape(row[c.key] ?? '')).join(',');
   });
-  return [headers.join(','), ...rows].join('\n');
+  return [header, ...rows].join('\n');
 }
 
 function downloadBlob(content: string, filename: string, mime: string) {
-  const blob = new Blob([content], { type: mime });
+  const blob = new Blob(['﻿' + content], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -108,13 +182,19 @@ export default function ItemsPage() {
   const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 1;
 
   // ── 导出：拉取当前筛选条件下全部数据 ──────────────────────────────────────
-  async function handleExport(format: 'csv' | 'json') {
+  async function handleExport(format: 'csv' | 'json' | 'xls') {
     setExporting(true);
     try {
       const all = await api.get<ListResult<Item>>(`/api/items?${buildParams(1, 5000).toString()}`);
       const ts = new Date().toISOString().slice(0, 10);
       if (format === 'csv') {
         downloadBlob(itemsToCsv(all.data), `items-${ts}.csv`, 'text/csv;charset=utf-8;');
+      } else if (format === 'xls') {
+        downloadBlob(
+          itemsToXls(all.data),
+          `items-${ts}.xls`,
+          'application/vnd.ms-excel;charset=utf-8;',
+        );
       } else {
         downloadBlob(JSON.stringify(all.data, null, 2), `items-${ts}.json`, 'application/json');
       }
@@ -172,10 +252,20 @@ export default function ItemsPage() {
           variant="outline"
           disabled={exporting || !data?.total}
           onClick={() => {
+            void handleExport('xls');
+          }}
+        >
+          {exporting ? '导出中…' : '导出 Excel'}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={exporting || !data?.total}
+          onClick={() => {
             void handleExport('csv');
           }}
         >
-          {exporting ? '导出中…' : '导出 CSV'}
+          导出 CSV
         </Button>
         <Button
           size="sm"

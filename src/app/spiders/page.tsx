@@ -118,6 +118,16 @@ const SPIDER_PARAM_SCHEMAS: Record<string, ParamField[]> = {
     },
     { key: 'pageSize', label: '每页结果数', type: 'number', defaultValue: 30 },
   ],
+  'bilibili-video-detail': [
+    {
+      key: 'bvids',
+      label: 'BV 号列表',
+      required: true,
+      placeholder: 'BV1xx411c7mD, BV1yy411c7mE',
+      hint: '多个 BV 号用英文逗号分隔，或填写 JSON 数组',
+    },
+    { key: 'delayMs', label: '请求间隔（ms）', type: 'number', defaultValue: 1000 },
+  ],
   'xhs-search': [
     {
       key: 'query',
@@ -186,6 +196,7 @@ const SPIDER_DISPLAY_NAMES: Record<string, string> = {
   'xhs-user-notes': '小红书用户笔记',
   'xhs-note-detail': '小红书笔记详情',
   'xhs-note-comments': '小红书笔记评论',
+  'bilibili-video-detail': 'Bilibili 视频详情',
 };
 
 const PLATFORM_BADGE: Record<string, string> = {
