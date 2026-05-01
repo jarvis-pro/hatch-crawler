@@ -1,12 +1,23 @@
 'use client';
-import { use } from 'react';
+import { use, useState } from 'react';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ChevronDown, RefreshCw } from 'lucide-react';
+import { toast } from 'sonner';
 import type { Item } from '@/lib/db';
 import { api } from '@/lib/api-client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { JsonViewer } from '@/components/items/json-viewer';
 
 // ── 样式映射 ──────────────────────────────────────────────────────────────────
@@ -32,9 +43,15 @@ function fmtNum(n: unknown): string {
   if (n == null) return '—';
   const num = Number(n);
   if (!Number.isFinite(num)) return '—';
-  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`;
-  if (num >= 1_000) return `${(num / 1_000).toFixed(1)}K`;
-  return num.toLocaleString();
+  if (num >= 1_0000_0000) {
+    const v = (num / 1_0000_0000).toFixed(1);
+    return `${v.endsWith('.0') ? v.slice(0, -2) : v}亿`;
+  }
+  if (num >= 1_0000) {
+    const v = (num / 1_0000).toFixed(1);
+    return `${v.endsWith('.0') ? v.slice(0, -2) : v}万`;
+  }
+  return num.toLocaleString('zh-CN');
 }
 
 function fmtDuration(ms: unknown): string {
@@ -63,14 +80,46 @@ function fmtDate(iso: unknown): string {
   }
 }
 
-// ── VideoQuickDownload ────────────────────────────────────────────────────────
+// ── VideoDownloadMenu ─────────────────────────────────────────────────────────
+
+/** payload 中存储的格式信息（由 yt-dlp 抓取时写入） */
+interface StoredVideoFormatEntry {
+  height: number;
+  size?: number;
+}
+
+interface StoredVideoFormats {
+  // 新结构（含文件大小）
+  formats?: StoredVideoFormatEntry[];
+  // 旧结构向后兼容
+  heights?: number[];
+  hasAudio: boolean;
+  audioSize?: number;
+}
+
+/** 格式化字节为可读大小（近似值） */
+function fmtBytes(bytes: number | undefined): string | null {
+  if (bytes == null || bytes <= 0) return null;
+  if (bytes >= 1024 ** 3) return `~${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  if (bytes >= 1024 ** 2) return `~${Math.round(bytes / 1024 ** 2)} MB`;
+  return `~${Math.round(bytes / 1024)} KB`;
+}
 
 /**
- * 视频详情右上角的一键下载按钮组。
- * 点击后直接触发浏览器下载，通过流式代理接口从源头抓取。
+ * 静态回退预设：当 payload 中没有 videoFormats 时使用。
+ * 显示为"预设 · Xp"以区分"已确认"的实际格式。
  */
-function VideoQuickDownload({ item }: { item: Item }) {
-  // 检查 yt-dlp 是否可用（设置 + 系统 health）
+const FALLBACK_HEIGHTS = [1080, 720, 480, 360];
+
+/**
+ * 视频详情右上角的 "⋯" 菜单。
+ * - 优先使用 payload.videoFormats 中的实际可用格式
+ * - 无格式数据时回退到静态预设（标注"预设"）
+ * - yt-dlp 不可用时隐藏整个菜单
+ */
+function VideoDownloadMenu({ item }: { item: Item }) {
+  const qc = useQueryClient();
+
   const { data: ytSetting } = useQuery({
     queryKey: ['setting', 'enable_youtube_download'],
     queryFn: () =>
@@ -80,26 +129,132 @@ function VideoQuickDownload({ item }: { item: Item }) {
     queryKey: ['system', 'health'],
     queryFn: () => api.get<{ ytdlp: { ok: boolean } }>('/api/system/health'),
   });
+  const isLoading = ytSetting === undefined || health === undefined;
   const ytdlpAvailable = Boolean(ytSetting?.value) && Boolean(health?.ytdlp?.ok);
 
-  if (!ytdlpAvailable) return null;
+  const fetchFormats = useMutation({
+    mutationFn: () => api.post<StoredVideoFormats>(`/api/items/${String(item.id)}/formats`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['item', String(item.id)] });
+      toast.success('格式信息已更新');
+    },
+    onError: (err) => toast.error(`获取格式失败：${String(err)}`),
+  });
 
-  const downloadUrl = (fetcher: 'ytdlp') =>
-    `/api/items/${String(item.id)}/download?url=${encodeURIComponent(item.url)}&fetcher=${fetcher}`;
+  // 查询中或不可用时保留等尺寸占位，防止布局抖动
+  if (isLoading || !ytdlpAvailable) {
+    return (
+      <Button
+        variant="default"
+        size="sm"
+        className="pointer-events-none shrink-0 gap-1.5 opacity-0"
+        disabled
+      >
+        下载
+        <ChevronDown className="h-3.5 w-3.5" />
+      </Button>
+    );
+  }
+
+  const base = `/api/items/${String(item.id)}/download?url=${encodeURIComponent(item.url)}&fetcher=ytdlp`;
+
+  // 从 payload 读取爬取时记录的实际格式（兼容新旧两种结构）
+  const storedFormats = (item.payload as Record<string, unknown>)?.videoFormats as
+    | StoredVideoFormats
+    | undefined;
+
+  // 新结构：formats[]，旧结构：heights[]
+  const storedEntries: StoredVideoFormatEntry[] =
+    storedFormats?.formats ?? (storedFormats?.heights ?? []).map((h) => ({ height: h }));
+
+  const hasStoredFormats = storedEntries.length > 0;
+  const videoEntries: StoredVideoFormatEntry[] = hasStoredFormats
+    ? storedEntries
+    : FALLBACK_HEIGHTS.map((h) => ({ height: h }));
+  const showAudio: boolean = hasStoredFormats ? storedFormats!.hasAudio : true;
+  const isFallback = !hasStoredFormats;
+
+  /** 高度数字 → yt-dlp quality 参数字符串 */
+  function heightToQuality(h: number): string {
+    if (h >= 2160) return 'best';
+    if (h >= 1080) return '1080p';
+    if (h >= 720) return '720p';
+    if (h >= 480) return '480p';
+    return '360p';
+  }
 
   return (
-    <div className="flex shrink-0 gap-1.5">
-      <a href={downloadUrl('ytdlp')} download>
-        <Button size="sm" variant="outline">
-          ↓ 视频
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="default" size="sm" className="shrink-0 gap-1.5">
+          下载
+          <ChevronDown className="h-3.5 w-3.5" />
         </Button>
-      </a>
-      <a href={`${downloadUrl('ytdlp')}&audioOnly=1`} download>
-        <Button size="sm" variant="outline">
-          ↓ 音频
-        </Button>
-      </a>
-    </div>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52">
+        {/* 视频下载 */}
+        <DropdownMenuLabel className="flex items-center justify-between pr-1">
+          <span>
+            视频下载
+            {isFallback ? <span className="ml-1 font-normal opacity-60">预设</span> : null}
+          </span>
+          {isFallback && (
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                fetchFormats.mutate();
+              }}
+              disabled={fetchFormats.isPending}
+              title="调用 yt-dlp 获取该视频的实际可用分辨率"
+              className="rounded p-0.5 opacity-60 hover:opacity-100 disabled:opacity-30"
+            >
+              <RefreshCw className={`h-3 w-3 ${fetchFormats.isPending ? 'animate-spin' : ''}`} />
+            </button>
+          )}
+        </DropdownMenuLabel>
+        <DropdownMenuGroup>
+          {videoEntries.map(({ height: h, size }) => {
+            const q = heightToQuality(h);
+            const label = h >= 2160 ? '4K' : `${String(h)}p`;
+            return (
+              <DropdownMenuItem key={h} asChild>
+                <a
+                  href={`${base}&quality=${q}`}
+                  download
+                  className="flex w-full items-center justify-between gap-3"
+                >
+                  <span>↓ {label} 视频</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {fmtBytes(size) ?? '—'}
+                  </span>
+                </a>
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuGroup>
+
+        {/* 音频下载 */}
+        {showAudio && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem asChild>
+                <a
+                  href={`${base}&audioOnly=true`}
+                  download
+                  className="flex w-full items-center justify-between gap-3"
+                >
+                  <span>↓ 音频（MP3）</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {fmtBytes(storedFormats?.audioSize) ?? '—'}
+                  </span>
+                </a>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -119,6 +274,7 @@ interface VideoPayload {
 function VideoDetail({ item }: { item: Item }) {
   const p = item.payload as VideoPayload;
   const thumbnail = p.media?.find((m) => m.kind === 'thumbnail')?.url;
+  const [descExpanded, setDescExpanded] = useState(false);
 
   return (
     <div className="space-y-4">
@@ -174,9 +330,19 @@ function VideoDetail({ item }: { item: Item }) {
 
       {/* 简介 */}
       {p.description && (
-        <p className="line-clamp-4 text-sm leading-relaxed text-muted-foreground">
-          {p.description}
-        </p>
+        <div>
+          <p
+            className={`whitespace-pre-line text-sm leading-relaxed text-muted-foreground ${descExpanded ? '' : 'line-clamp-6'}`}
+          >
+            {p.description}
+          </p>
+          <button
+            onClick={() => setDescExpanded((v) => !v)}
+            className="mt-1 text-xs text-muted-foreground/70 hover:text-muted-foreground"
+          >
+            {descExpanded ? '收起' : '展开'}
+          </button>
+        </div>
       )}
 
       {/* 标签 */}
@@ -440,11 +606,11 @@ export default function ItemDetailPage({ params }: { params: Promise<{ id: strin
       {/* 元数据卡 */}
       <Card>
         <CardHeader className="pb-2">
-          <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center justify-between gap-2">
             <CardTitle className="text-sm font-normal text-muted-foreground">
               #{data.id} · {data.spider}
             </CardTitle>
-            <div className="flex shrink-0 gap-1">
+            <div className="flex shrink-0 items-center gap-1">
               {data.platform && (
                 <span
                   className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${PLATFORM_BADGE[data.platform] ?? 'bg-gray-100 text-gray-700'}`}
@@ -463,47 +629,47 @@ export default function ItemDetailPage({ params }: { params: Promise<{ id: strin
           </div>
         </CardHeader>
         <CardContent>
-          <dl className="grid grid-cols-[110px_1fr] gap-y-2 text-sm">
-            <dt className="text-muted-foreground">URL</dt>
-            <dd>
-              <a
-                href={data.url}
-                target="_blank"
-                rel="noreferrer"
-                className="break-all text-xs hover:underline"
-              >
-                {data.url}
-              </a>
-            </dd>
-            {data.sourceId && (
-              <>
-                <dt className="text-muted-foreground">sourceId</dt>
-                <dd className="font-mono text-xs">{data.sourceId}</dd>
-              </>
-            )}
-            <dt className="text-muted-foreground">runId</dt>
-            <dd>
-              {data.runId ? (
-                <Link href={`/runs/${data.runId}`} className="font-mono text-xs hover:underline">
-                  {data.runId}
-                </Link>
-              ) : (
-                '—'
+          <div className="flex items-end gap-4">
+            <dl className="grid flex-1 grid-cols-[110px_1fr] gap-y-2 text-sm">
+              <dt className="text-muted-foreground">URL</dt>
+              <dd>
+                <a
+                  href={data.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="break-all text-xs hover:underline"
+                >
+                  {data.url}
+                </a>
+              </dd>
+              {data.sourceId && (
+                <>
+                  <dt className="text-muted-foreground">sourceId</dt>
+                  <dd className="font-mono text-xs">{data.sourceId}</dd>
+                </>
               )}
-            </dd>
-            <dt className="text-muted-foreground">抓取时间</dt>
-            <dd className="text-xs">{fmtDate(data.fetchedAt)}</dd>
-          </dl>
+              <dt className="text-muted-foreground">runId</dt>
+              <dd>
+                {data.runId ? (
+                  <Link href={`/runs/${data.runId}`} className="font-mono text-xs hover:underline">
+                    {data.runId}
+                  </Link>
+                ) : (
+                  '—'
+                )}
+              </dd>
+              <dt className="text-muted-foreground">抓取时间</dt>
+              <dd className="text-xs">{fmtDate(data.fetchedAt)}</dd>
+            </dl>
+            {isVideo && <VideoDownloadMenu item={data} />}
+          </div>
         </CardContent>
       </Card>
 
       {/* 富展示 / 通用 JSON */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between gap-2">
-            <CardTitle>{richTitle}</CardTitle>
-            {isVideo && <VideoQuickDownload item={data} />}
-          </div>
+          <CardTitle>{richTitle}</CardTitle>
         </CardHeader>
         <CardContent>
           {isVideo && <VideoDetail item={data} />}
