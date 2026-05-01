@@ -112,6 +112,24 @@ export async function list(
   return { data: rows.map(shape), total, page, pageSize };
 }
 
+export async function remove(db: Db, id: string): Promise<void> {
+  await db.run.delete({ where: { id } });
+}
+
+/**
+ * 批量删除运行记录，仅删除终态（completed / failed / stopped）的 run，
+ * 跳过仍在运行或排队中的记录，返回实际删除数量。
+ */
+export async function removeMany(db: Db, ids: string[]): Promise<number> {
+  const result = await db.run.deleteMany({
+    where: {
+      id: { in: ids },
+      status: { in: [RunStatus.completed, RunStatus.failed, RunStatus.stopped] },
+    },
+  });
+  return result.count;
+}
+
 /**
  * 启动时清理：把状态仍是 running 但很久没更新的 run 标记为 failed。
  *

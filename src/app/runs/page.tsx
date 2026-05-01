@@ -2,7 +2,8 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import type { Run, Spider } from '@/lib/db';
 import { api } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -35,6 +36,11 @@ const STATUS_OPTIONS = [
   { value: 'stopped', label: '已停止' },
 ];
 
+/** 是否为终态（可删除） */
+function isTerminal(status: string) {
+  return status === 'completed' || status === 'failed' || status === 'stopped';
+}
+
 function fmtDuration(start: string | null, end: string | null): string {
   if (!start) return '—';
   const s = new Date(start);
@@ -47,21 +53,26 @@ function fmtDuration(start: string | null, end: string | null): string {
 
 export default function RunsPage() {
   const searchParams = useSearchParams();
+  const qc = useQueryClient();
 
-  // 从 URL 初始化 spider 筛选（Spider 详情页"查看全部"跳转时带入）
   const [spider, setSpider] = useState(() => searchParams.get('spider') ?? '');
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // URL 参数变化时同步（如浏览器后退到带 ?spider= 的 URL）
   useEffect(() => {
     const s = searchParams.get('spider') ?? '';
     setSpider(s);
     setPage(1);
+    setSelected(new Set());
   }, [searchParams]);
 
-  function buildQuery() {
-    const p = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+  function buildQuery(overridePage?: number) {
+    const p = new URLSearchParams({
+      page: String(overridePage ?? page),
+      pageSize: String(PAGE_SIZE),
+    });
     if (status) p.set('status', status);
     if (spider) p.set('spider', spider);
     return `/api/runs?${p.toString()}`;
@@ -81,8 +92,58 @@ export default function RunsPage() {
 
   const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 1;
 
+  // ── 勾选逻辑（仅终态 run 可勾选）────────────────────────────────────────────
+  const currentIds = (data?.data ?? []).filter((r) => isTerminal(r.status)).map((r) => r.id);
+  const allOnPageSelected = currentIds.length > 0 && currentIds.every((id) => selected.has(id));
+
+  function toggleSelectAll() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allOnPageSelected) {
+        currentIds.forEach((id) => next.delete(id));
+      } else {
+        currentIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  }
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // ── 批量删除 ──────────────────────────────────────────────────────────────
+  const deleteMutation = useMutation({
+    mutationFn: (ids: string[]) => api.delete<{ deleted: number }>('/api/runs', { ids }),
+    onSuccess: (res) => {
+      toast.success(`已删除 ${res.deleted} 条运行记录`);
+      setSelected(new Set());
+      void qc.invalidateQueries({ queryKey: ['runs'] });
+    },
+    onError: (err: Error) => {
+      toast.error(`删除失败：${err.message}`);
+    },
+  });
+
+  function handleDeleteSelected() {
+    if (selected.size === 0) return;
+    if (
+      !confirm(
+        `确定删除选中的 ${selected.size} 条运行记录？相关事件日志也会一并删除，此操作不可撤销。`,
+      )
+    )
+      return;
+    deleteMutation.mutate([...selected]);
+  }
+
   function resetPage() {
     setPage(1);
+    setSelected(new Set());
   }
 
   return (
@@ -140,6 +201,23 @@ export default function RunsPage() {
         )}
 
         <span className="flex-1 text-sm text-muted-foreground">共 {data?.total ?? 0} 条</span>
+
+        {/* 批量操作（有选中时显示） */}
+        {selected.size > 0 && (
+          <>
+            <span className="text-sm font-medium text-muted-foreground">
+              已选 {selected.size} 条
+            </span>
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={deleteMutation.isPending}
+              onClick={handleDeleteSelected}
+            >
+              {deleteMutation.isPending ? '删除中…' : `删除 ${selected.size} 条`}
+            </Button>
+          </>
+        )}
       </div>
 
       <Card>
@@ -147,6 +225,16 @@ export default function RunsPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <input
+                    type="checkbox"
+                    checked={allOnPageSelected}
+                    onChange={toggleSelectAll}
+                    className="h-4 w-4 cursor-pointer rounded border-gray-300"
+                    aria-label="全选当前页终态记录"
+                    title="全选当前页可删除的记录（运行中 / 排队中不可选）"
+                  />
+                </TableHead>
                 <TableHead>ID</TableHead>
                 <TableHead>Spider</TableHead>
                 <TableHead>状态</TableHead>
@@ -158,47 +246,64 @@ export default function RunsPage() {
             <TableBody>
               {isLoading && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
                     加载中…
                   </TableCell>
                 </TableRow>
               )}
               {data?.data.length === 0 && !isLoading && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
                     暂无运行记录。
                   </TableCell>
                 </TableRow>
               )}
-              {data?.data.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell className="font-mono text-xs">
-                    <Link href={`/runs/${r.id}`} className="hover:underline">
-                      {r.id.slice(0, 8)}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    <Link href={`/spiders/${r.spiderName}`} className="hover:underline">
-                      {r.spiderName}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <RunStatusBadge status={r.status} />
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">
-                    {r.fetched} / {r.newItems} / {r.errors}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {fmtDuration(
-                      r.startedAt ? String(r.startedAt) : null,
-                      r.finishedAt ? String(r.finishedAt) : null,
-                    )}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {new Date(r.createdAt).toLocaleString()}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {data?.data.map((r) => {
+                const terminal = isTerminal(r.status);
+                const checked = selected.has(r.id);
+                return (
+                  <TableRow key={r.id} className={checked ? 'bg-muted/40' : undefined}>
+                    <TableCell>
+                      {terminal ? (
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleOne(r.id)}
+                          className="h-4 w-4 cursor-pointer rounded border-gray-300"
+                          aria-label={`选择 run ${r.id.slice(0, 8)}`}
+                        />
+                      ) : (
+                        <span className="inline-block h-4 w-4" />
+                      )}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      <Link href={`/runs/${r.id}`} className="hover:underline">
+                        {r.id.slice(0, 8)}
+                      </Link>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      <Link href={`/spiders/${r.spiderName}`} className="hover:underline">
+                        {r.spiderName}
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <RunStatusBadge status={r.status} />
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {r.fetched} / {r.newItems} / {r.errors}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {fmtDuration(
+                        r.startedAt ? String(r.startedAt) : null,
+                        r.finishedAt ? String(r.finishedAt) : null,
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {new Date(r.createdAt).toLocaleString()}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>
@@ -211,7 +316,10 @@ export default function RunsPage() {
             size="sm"
             variant="outline"
             disabled={page <= 1}
-            onClick={() => setPage((p) => p - 1)}
+            onClick={() => {
+              setPage((p) => p - 1);
+              setSelected(new Set());
+            }}
           >
             ‹ 上一页
           </Button>
@@ -222,7 +330,10 @@ export default function RunsPage() {
             size="sm"
             variant="outline"
             disabled={page >= totalPages}
-            onClick={() => setPage((p) => p + 1)}
+            onClick={() => {
+              setPage((p) => p + 1);
+              setSelected(new Set());
+            }}
           >
             下一页 ›
           </Button>

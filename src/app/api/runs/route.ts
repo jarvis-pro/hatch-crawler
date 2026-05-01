@@ -61,3 +61,40 @@ export async function GET(req: Request): Promise<Response> {
     return failInternal(err);
   }
 }
+
+/**
+ * DELETE /api/runs
+ * Body: { ids: string[] }
+ * 批量删除终态（completed / failed / stopped）的运行记录；
+ * running / queued 状态的记录会被自动跳过，不报错。
+ */
+export async function DELETE(req: Request): Promise<Response> {
+  try {
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return fail('VALIDATION_ERROR', 'request body must be JSON');
+    }
+
+    if (
+      typeof body !== 'object' ||
+      body === null ||
+      !Array.isArray((body as Record<string, unknown>).ids)
+    ) {
+      return fail('VALIDATION_ERROR', 'body must contain ids array');
+    }
+
+    const ids = ((body as Record<string, unknown>).ids as unknown[])
+      .map(String)
+      .filter((s) => s.length > 0);
+
+    if (ids.length === 0) return fail('VALIDATION_ERROR', 'ids array is empty or invalid');
+
+    const db = getDb(env.databaseUrl);
+    const deleted = await runRepo.removeMany(db, ids);
+    return ok({ deleted });
+  } catch (err) {
+    return failInternal(err);
+  }
+}
