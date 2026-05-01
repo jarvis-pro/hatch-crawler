@@ -50,8 +50,11 @@ export async function handleCrawlJob(
     setCrawlerConfig(overrides);
   }
 
-  // 组装 Spider 构造参数：overrides 中的值 + 平台凭据注入
-  const spiderParams: Record<string, unknown> = { ...(overrides ?? {}) };
+  // 组装 Spider 构造参数：defaultParams 打底，overrides 覆盖，最后注入平台凭据
+  const spiderParams: Record<string, unknown> = {
+    ...(spiderRow?.defaultParams ?? {}),
+    ...(overrides ?? {}),
+  };
 
   // 记录本次 run 使用的账号 ID（用于失败后回写 failureCount）
   const usedAccountIds: number[] = [];
