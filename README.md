@@ -99,6 +99,11 @@ docker compose up postgres -d
 DATABASE_URL=postgres://hatch:hatch@localhost:5432/hatch pnpm dev
 ```
 
+> **媒体下载/转码**（RFC 0002）需要本机装 `ffmpeg` 与 `yt-dlp`。
+> macOS：`brew install ffmpeg yt-dlp`；
+> Docker 镜像已内置，无需额外安装。
+> 启动后看板「设置 → 下载」会显示这两者的健康度；缺失时也能继续做元数据抓取，但下载/转码相关入口会禁用。
+
 ### 不要看板，只调引擎
 
 ```bash
