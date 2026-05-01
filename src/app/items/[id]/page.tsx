@@ -22,6 +22,7 @@ const KIND_BADGE: Record<string, string> = {
   audio: 'bg-green-100 text-green-800',
   image: 'bg-yellow-100 text-yellow-800',
   post: 'bg-orange-100 text-orange-800',
+  comment: 'bg-pink-100 text-pink-800',
 };
 
 // ── 工具函数 ──────────────────────────────────────────────────────────────────
@@ -151,6 +152,226 @@ function VideoDetail({ item }: { item: Item }) {
   );
 }
 
+// ── PostDetail（XHS 图文 / 普通帖）─────────────────────────────────────────────
+
+interface MediaItem {
+  kind?: string;
+  url?: string;
+  width?: number;
+  height?: number;
+}
+
+interface PostPayload {
+  title?: string;
+  description?: string;
+  publishedAt?: string;
+  updatedAt?: string;
+  tags?: string[];
+  author?: { id?: string; name?: string; avatar?: string; url?: string };
+  metrics?: { likes?: number; comments?: number; collects?: number; shares?: number };
+  media?: MediaItem[];
+  noteId?: string;
+}
+
+function PostDetail({ item }: { item: Item }) {
+  const p = item.payload as PostPayload;
+  const images = (p.media ?? []).filter((m) => m.kind === 'image' || m.kind === 'cover');
+  const videoMedia = (p.media ?? []).find((m) => m.kind === 'video');
+
+  return (
+    <div className="space-y-4">
+      {/* 标题 + 作者 */}
+      <div className="space-y-1">
+        <a
+          href={item.url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-base font-semibold leading-snug hover:underline"
+        >
+          {p.title || '（无标题）'}
+        </a>
+        {p.author?.name && (
+          <p className="text-sm text-muted-foreground">
+            {p.author.url ? (
+              <a href={p.author.url} target="_blank" rel="noreferrer" className="hover:underline">
+                {p.author.name}
+              </a>
+            ) : (
+              p.author.name
+            )}
+            {p.publishedAt && <span className="ml-2">{fmtDate(p.publishedAt)}</span>}
+          </p>
+        )}
+      </div>
+
+      {/* 视频链接（笔记详情）*/}
+      {videoMedia?.url && (
+        <div className="rounded-md border bg-muted/40 p-3 text-sm">
+          <span className="text-muted-foreground">视频：</span>
+          <a
+            href={videoMedia.url}
+            target="_blank"
+            rel="noreferrer"
+            className="break-all text-xs hover:underline"
+          >
+            {videoMedia.url}
+          </a>
+        </div>
+      )}
+
+      {/* 图片网格 */}
+      {images.length > 0 && (
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+          {images.map((img, i) => (
+            <a key={i} href={img.url} target="_blank" rel="noreferrer">
+              <img
+                src={img.url}
+                alt={`图片 ${i + 1}`}
+                className="aspect-square w-full rounded-md object-cover shadow-sm"
+                loading="lazy"
+              />
+            </a>
+          ))}
+        </div>
+      )}
+
+      {/* 正文 */}
+      {p.description && (
+        <p className="whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
+          {p.description}
+        </p>
+      )}
+
+      {/* 互动数据 */}
+      <div className="grid grid-cols-4 gap-3">
+        {[
+          { label: '点赞', value: fmtNum(p.metrics?.likes) },
+          { label: '评论', value: fmtNum(p.metrics?.comments) },
+          { label: '收藏', value: fmtNum(p.metrics?.collects) },
+          { label: '分享', value: fmtNum(p.metrics?.shares) },
+        ].map(({ label, value }) => (
+          <div key={label} className="rounded-lg border bg-muted/40 px-3 py-2 text-center">
+            <p className="text-lg font-semibold tabular-nums">{value}</p>
+            <p className="text-xs text-muted-foreground">{label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* 标签 */}
+      {(p.tags ?? []).length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {(p.tags ?? []).map((tag) => (
+            <Badge key={String(tag)} variant="outline" className="text-xs">
+              #{String(tag)}
+            </Badge>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── CommentDetail（XHS 评论）──────────────────────────────────────────────────
+
+interface SubComment {
+  commentId?: string;
+  content?: string;
+  author?: { name?: string; url?: string };
+  publishedAt?: string;
+  ipLocation?: string;
+  metrics?: { likes?: number };
+}
+
+interface CommentPayload {
+  commentId?: string;
+  noteId?: string;
+  content?: string;
+  author?: { id?: string; name?: string; avatar?: string; url?: string };
+  publishedAt?: string;
+  ipLocation?: string;
+  metrics?: { likes?: number; replies?: number };
+  subComments?: SubComment[];
+}
+
+function CommentDetail({ item }: { item: Item }) {
+  const p = item.payload as CommentPayload;
+  const subs = p.subComments ?? [];
+
+  return (
+    <div className="space-y-4">
+      {/* 主评论 */}
+      <div className="rounded-lg border p-4">
+        <div className="mb-2 flex items-center gap-2 text-sm">
+          {p.author?.url ? (
+            <a
+              href={p.author.url}
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium hover:underline"
+            >
+              {p.author.name ?? '用户'}
+            </a>
+          ) : (
+            <span className="font-medium">{p.author?.name ?? '用户'}</span>
+          )}
+          {p.publishedAt && (
+            <span className="text-xs text-muted-foreground">{fmtDate(p.publishedAt)}</span>
+          )}
+          {p.ipLocation && (
+            <span className="text-xs text-muted-foreground">IP: {p.ipLocation}</span>
+          )}
+          {p.metrics?.likes != null && (
+            <span className="ml-auto text-xs text-muted-foreground">
+              ♥ {fmtNum(p.metrics.likes)}
+            </span>
+          )}
+        </div>
+        <p className="whitespace-pre-line text-sm leading-relaxed">{p.content}</p>
+      </div>
+
+      {/* 回复数 */}
+      {p.metrics?.replies != null && p.metrics.replies > 0 && (
+        <p className="text-xs text-muted-foreground">
+          共 {p.metrics.replies} 条回复{subs.length > 0 ? `，已展示 ${subs.length} 条` : ''}
+        </p>
+      )}
+
+      {/* 二级评论 */}
+      {subs.length > 0 && (
+        <div className="ml-4 space-y-2 border-l-2 border-muted pl-4">
+          {subs.map((sc, i) => (
+            <div key={sc.commentId ?? i} className="rounded-md bg-muted/40 p-3 text-sm">
+              <div className="mb-1 flex items-center gap-2">
+                {sc.author?.url ? (
+                  <a
+                    href={sc.author.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs font-medium hover:underline"
+                  >
+                    {sc.author.name ?? '用户'}
+                  </a>
+                ) : (
+                  <span className="text-xs font-medium">{sc.author?.name ?? '用户'}</span>
+                )}
+                {sc.publishedAt && (
+                  <span className="text-xs text-muted-foreground">{fmtDate(sc.publishedAt)}</span>
+                )}
+                {sc.metrics?.likes != null && (
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    ♥ {fmtNum(sc.metrics.likes)}
+                  </span>
+                )}
+              </div>
+              <p className="whitespace-pre-line text-xs leading-relaxed">{sc.content}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── 页面主体 ──────────────────────────────────────────────────────────────────
 
 export default function ItemDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -167,6 +388,11 @@ export default function ItemDetailPage({ params }: { params: Promise<{ id: strin
     return <div className="py-8 text-center text-sm text-muted-foreground">未找到条目 #{id}</div>;
 
   const isVideo = data.kind === 'video';
+  const isPost = data.kind === 'post';
+  const isComment = data.kind === 'comment';
+  const hasRichView = isVideo || isPost || isComment;
+
+  const richTitle = isVideo ? '视频详情' : isPost ? '帖子详情' : isComment ? '评论详情' : 'Payload';
 
   return (
     <div className="space-y-4">
@@ -230,18 +456,21 @@ export default function ItemDetailPage({ params }: { params: Promise<{ id: strin
         </CardContent>
       </Card>
 
-      {/* 视频富展示 / 通用 JSON */}
+      {/* 富展示 / 通用 JSON */}
       <Card>
         <CardHeader>
-          <CardTitle>{isVideo ? '视频详情' : 'Payload'}</CardTitle>
+          <CardTitle>{richTitle}</CardTitle>
         </CardHeader>
         <CardContent>
-          {isVideo ? <VideoDetail item={data} /> : <JsonViewer data={data.payload} />}
+          {isVideo && <VideoDetail item={data} />}
+          {isPost && <PostDetail item={data} />}
+          {isComment && <CommentDetail item={data} />}
+          {!hasRichView && <JsonViewer data={data.payload} />}
         </CardContent>
       </Card>
 
-      {/* 视频也保留原始 JSON */}
-      {isVideo && (
+      {/* 富展示时保留原始 JSON（可折叠查看） */}
+      {hasRichView && (
         <Card>
           <CardHeader>
             <CardTitle className="text-sm text-muted-foreground">原始 Payload</CardTitle>

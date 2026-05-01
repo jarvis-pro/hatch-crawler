@@ -1,8 +1,9 @@
 'use client';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import type { Run } from '@/lib/db';
+import type { Run, Spider } from '@/lib/db';
 import { api } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -45,34 +46,57 @@ function fmtDuration(start: string | null, end: string | null): string {
 }
 
 export default function RunsPage() {
+  const searchParams = useSearchParams();
+
+  // 从 URL 初始化 spider 筛选（Spider 详情页"查看全部"跳转时带入）
+  const [spider, setSpider] = useState(() => searchParams.get('spider') ?? '');
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
+
+  // URL 参数变化时同步（如浏览器后退到带 ?spider= 的 URL）
+  useEffect(() => {
+    const s = searchParams.get('spider') ?? '';
+    setSpider(s);
+    setPage(1);
+  }, [searchParams]);
 
   function buildQuery() {
     const p = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
     if (status) p.set('status', status);
+    if (spider) p.set('spider', spider);
     return `/api/runs?${p.toString()}`;
   }
 
   const { data, isLoading } = useQuery({
-    queryKey: ['runs', 'list', status, page],
+    queryKey: ['runs', 'list', status, spider, page],
     queryFn: () => api.get<ListResult<Run>>(buildQuery()),
     refetchInterval: 5_000,
   });
 
+  // 加载已注册的 spider 列表用于下拉选择
+  const { data: spiders = [] } = useQuery({
+    queryKey: ['spiders'],
+    queryFn: () => api.get<Spider[]>('/api/spiders'),
+  });
+
   const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 1;
+
+  function resetPage() {
+    setPage(1);
+  }
 
   return (
     <div className="space-y-4">
       {/* ── 筛选栏 ── */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {/* 状态筛选 */}
         <div className="flex rounded-md border">
           {STATUS_OPTIONS.map((opt) => (
             <button
               key={opt.value}
               onClick={() => {
                 setStatus(opt.value);
-                setPage(1);
+                resetPage();
               }}
               className={`px-3 py-1.5 text-xs font-medium transition-colors first:rounded-l-md last:rounded-r-md ${
                 status === opt.value
@@ -84,6 +108,37 @@ export default function RunsPage() {
             </button>
           ))}
         </div>
+
+        {/* Spider 下拉筛选 */}
+        <select
+          value={spider}
+          onChange={(e) => {
+            setSpider(e.target.value);
+            resetPage();
+          }}
+          className="rounded-md border border-input bg-background px-3 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+        >
+          <option value="">所有 Spider</option>
+          {spiders.map((s) => (
+            <option key={s.name} value={s.name}>
+              {s.displayName}
+            </option>
+          ))}
+        </select>
+
+        {/* 清除 Spider 筛选 */}
+        {spider && (
+          <button
+            className="text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => {
+              setSpider('');
+              resetPage();
+            }}
+          >
+            ✕ 清除 Spider 筛选
+          </button>
+        )}
+
         <span className="flex-1 text-sm text-muted-foreground">共 {data?.total ?? 0} 条</span>
       </div>
 
@@ -122,7 +177,11 @@ export default function RunsPage() {
                       {r.id.slice(0, 8)}
                     </Link>
                   </TableCell>
-                  <TableCell className="text-sm">{r.spiderName}</TableCell>
+                  <TableCell className="text-sm">
+                    <Link href={`/spiders/${r.spiderName}`} className="hover:underline">
+                      {r.spiderName}
+                    </Link>
+                  </TableCell>
                   <TableCell>
                     <RunStatusBadge status={r.status} />
                   </TableCell>
