@@ -1,21 +1,17 @@
-"use client";
-import { use } from "react";
-import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import type { Item } from "@/lib/db";
-import { api } from "@/lib/api-client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { JsonViewer } from "@/components/items/json-viewer";
+'use client';
+import { use } from 'react';
+import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
+import type { Item } from '@/lib/db';
+import { api } from '@/lib/api-client';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { JsonViewer } from '@/components/items/json-viewer';
 
-export default function ItemDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default function ItemDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["item", id],
+    queryKey: ['item', id],
     queryFn: () => api.get<Item>(`/api/items/${id}`),
   });
 
@@ -41,7 +37,7 @@ export default function ItemDetailPage({
                   {data.runId}
                 </Link>
               ) : (
-                "—"
+                '—'
               )}
             </dd>
             <dt className="text-muted-foreground">fetchedAt</dt>

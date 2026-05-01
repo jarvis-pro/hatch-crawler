@@ -1,5 +1,5 @@
-import cron from "node-cron";
-import { logger } from "../utils/logger";
+import cron from 'node-cron';
+import { logger } from '../utils/logger';
 
 export interface ScheduleHandle {
   /** Resolves when the (one-shot) job is done. For cron mode, never resolves. */
@@ -15,15 +15,12 @@ export interface ScheduleHandle {
  * `done` promise never resolves — the caller stops the schedule explicitly
  * (e.g. on SIGINT).
  */
-export function scheduleOrRunOnce(
-  schedule: string,
-  job: () => Promise<unknown>,
-): ScheduleHandle {
+export function scheduleOrRunOnce(schedule: string, job: () => Promise<unknown>): ScheduleHandle {
   if (!schedule) {
     const done = job()
       .then(() => undefined)
       .catch((err) => {
-        logger.error({ err }, "one-shot job failed");
+        logger.error({ err }, 'one-shot job failed');
       });
     return { done, stop: () => {} };
   }
@@ -35,20 +32,20 @@ export function scheduleOrRunOnce(
   let running = false;
   const task = cron.schedule(schedule, async () => {
     if (running) {
-      logger.warn("previous run still in progress, skipping tick");
+      logger.warn('previous run still in progress, skipping tick');
       return;
     }
     running = true;
     try {
       await job();
     } catch (err) {
-      logger.error({ err }, "scheduled job failed");
+      logger.error({ err }, 'scheduled job failed');
     } finally {
       running = false;
     }
   });
 
-  logger.info({ schedule }, "cron schedule registered");
+  logger.info({ schedule }, 'cron schedule registered');
   task.start();
   return {
     done: new Promise(() => {}), // never resolves; cron runs forever

@@ -1,11 +1,11 @@
-import got, { type Got, type OptionsOfTextResponseBody } from "got";
-import { setTimeout as sleep } from "node:timers/promises";
-import { config } from "../config/index";
-import { logger } from "../utils/logger";
-import { getHost } from "../utils/url";
-import { UAPool } from "../middleware/ua-pool";
-import { ProxyPool } from "../middleware/proxy-pool";
-import { HostRateLimiter } from "../middleware/rate-limiter";
+import got, { type Got, type OptionsOfTextResponseBody } from 'got';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { config } from '../config/index';
+import { logger } from '../utils/logger';
+import { getHost } from '../utils/url';
+import { UAPool } from '../middleware/ua-pool';
+import { ProxyPool } from '../middleware/proxy-pool';
+import { HostRateLimiter } from '../middleware/rate-limiter';
 
 export interface FetchResult {
   url: string;
@@ -39,8 +39,7 @@ export class Fetcher {
   constructor(opts: FetcherOptions = {}) {
     this.uaPool = opts.uaPool ?? new UAPool();
     this.proxyPool = opts.proxyPool ?? new ProxyPool(config.proxyList);
-    this.rateLimiter =
-      opts.rateLimiter ?? new HostRateLimiter(config.perHostIntervalMs);
+    this.rateLimiter = opts.rateLimiter ?? new HostRateLimiter(config.perHostIntervalMs);
 
     this.client = got.extend({
       timeout: { request: config.requestTimeoutMs },
@@ -51,10 +50,7 @@ export class Fetcher {
     });
   }
 
-  async fetch(
-    url: string,
-    init?: OptionsOfTextResponseBody,
-  ): Promise<FetchResult> {
+  async fetch(url: string, init?: OptionsOfTextResponseBody): Promise<FetchResult> {
     const host = getHost(url);
     if (!host) throw new Error(`Invalid URL: ${url}`);
 
@@ -64,10 +60,10 @@ export class Fetcher {
 
       const proxy = this.proxyPool.next();
       const headers: Record<string, string> = {
-        "user-agent": this.uaPool.random(),
+        'user-agent': this.uaPool.random(),
         accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.8,*/*;q=0.5",
-        "accept-language": "en-US,en;q=0.9",
+          'text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.8,*/*;q=0.5',
+        'accept-language': 'en-US,en;q=0.9',
         ...((init?.headers as Record<string, string> | undefined) ?? {}),
       };
 
@@ -112,7 +108,7 @@ export class Fetcher {
         const backoff = Math.min(2000 * 2 ** (attempt - 1), 15_000);
         logger.warn(
           { url, attempt, backoff, err: (err as Error).message },
-          "fetch failed, will retry",
+          'fetch failed, will retry',
         );
         if (attempt < config.retryAttempts) await sleep(backoff);
       }
@@ -120,7 +116,7 @@ export class Fetcher {
 
     throw new Error(
       `Fetch ${url} failed after ${config.retryAttempts} attempts: ${
-        (lastErr as Error)?.message ?? "unknown"
+        (lastErr as Error)?.message ?? 'unknown'
       }`,
     );
   }

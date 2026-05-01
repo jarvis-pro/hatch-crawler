@@ -27,30 +27,26 @@ export class ApiClientError extends Error {
 async function parse<T>(res: Response): Promise<T> {
   const json = (await res.json()) as ApiEnvelope<T>;
   if (json.ok) return json.data;
-  throw new ApiClientError(
-    json.error.code,
-    json.error.message,
-    json.error.details,
-  );
+  throw new ApiClientError(json.error.code, json.error.message, json.error.details);
 }
 
 export const api = {
   async get<T>(url: string): Promise<T> {
-    const res = await fetch(url, { cache: "no-store" });
+    const res = await fetch(url, { cache: 'no-store' });
     return parse<T>(res);
   },
   async post<T>(url: string, body?: unknown): Promise<T> {
     const res = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
     return parse<T>(res);
   },
   async put<T>(url: string, body?: unknown): Promise<T> {
     const res = await fetch(url, {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
     return parse<T>(res);

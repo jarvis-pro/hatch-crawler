@@ -9,13 +9,9 @@
  *   pnpm smoke
  */
 
-import { runSpider, setCrawlerConfig } from "../src/lib/crawler";
-import { NextJsBlogSpider } from "../src/lib/crawler/spiders/nextjs-blog-spider";
-import type {
-  CrawlItem,
-  SaveItemResult,
-  Storage,
-} from "../src/lib/crawler/storage/storage";
+import { runSpider, setCrawlerConfig } from '../src/lib/crawler';
+import { NextJsBlogSpider } from '../src/lib/crawler/spiders/nextjs-blog-spider';
+import type { CrawlItem, SaveItemResult, Storage } from '../src/lib/crawler/storage/storage';
 
 class InMemoryStorage implements Storage {
   private items: CrawlItem[] = [];
@@ -47,24 +43,24 @@ async function main(): Promise<void> {
     requestTimeoutMs: 15000,
     retryAttempts: 2,
     proxyList: [],
-    logLevel: "info",
+    logLevel: 'info',
   });
 
   const storage = new InMemoryStorage();
   const stats = await runSpider(new NextJsBlogSpider(), {
     storage,
     onEvent: (e) => {
-      const url = "url" in e ? e.url : "";
+      const url = 'url' in e ? e.url : '';
       console.log(`[${e.type}]`, url);
     },
   });
 
-  console.log("\n==== smoke test done ====");
-  console.log("storage items:", storage.itemCount);
-  console.log("stats:", stats);
+  console.log('\n==== smoke test done ====');
+  console.log('storage items:', storage.itemCount);
+  console.log('stats:', stats);
 }
 
 main().catch((err: unknown) => {
-  console.error("smoke test failed:", err);
+  console.error('smoke test failed:', err);
   process.exit(1);
 });

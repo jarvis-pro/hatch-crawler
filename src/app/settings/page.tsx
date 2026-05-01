@@ -1,11 +1,11 @@
-"use client";
-import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { api } from "@/lib/api-client";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+'use client';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { api } from '@/lib/api-client';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function SettingsPage() {
   return (
@@ -31,12 +31,11 @@ export default function SettingsPage() {
 function SettingEditor({ settingKey }: { settingKey: string }) {
   const qc = useQueryClient();
   const { data } = useQuery({
-    queryKey: ["setting", settingKey],
-    queryFn: () =>
-      api.get<{ key: string; value: unknown }>(`/api/settings/${settingKey}`),
+    queryKey: ['setting', settingKey],
+    queryFn: () => api.get<{ key: string; value: unknown }>(`/api/settings/${settingKey}`),
   });
 
-  const [text, setText] = useState<string>("");
+  const [text, setText] = useState<string>('');
 
   // 初次加载时同步 textarea
   if (data && !text) {
@@ -44,11 +43,10 @@ function SettingEditor({ settingKey }: { settingKey: string }) {
   }
 
   const save = useMutation({
-    mutationFn: (value: unknown) =>
-      api.put(`/api/settings/${settingKey}`, { value }),
+    mutationFn: (value: unknown) => api.put(`/api/settings/${settingKey}`, { value }),
     onSuccess: () => {
-      toast.success("已保存");
-      void qc.invalidateQueries({ queryKey: ["setting", settingKey] });
+      toast.success('已保存');
+      void qc.invalidateQueries({ queryKey: ['setting', settingKey] });
     },
     onError: (err) => toast.error(String(err)),
   });
@@ -76,7 +74,7 @@ function SettingEditor({ settingKey }: { settingKey: string }) {
               }
             }}
           >
-            {save.isPending ? "保存中…" : "保存"}
+            {save.isPending ? '保存中…' : '保存'}
           </Button>
         </div>
       </CardContent>

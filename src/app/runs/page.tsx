@@ -1,9 +1,9 @@
-"use client";
-import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import type { Run } from "@/lib/db";
-import { api } from "@/lib/api-client";
-import { Card, CardContent } from "@/components/ui/card";
+'use client';
+import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
+import type { Run } from '@/lib/db';
+import { api } from '@/lib/api-client';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   Table,
   TableBody,
@@ -11,8 +11,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import { RunStatusBadge } from "@/components/runs/run-status-badge";
+} from '@/components/ui/table';
+import { RunStatusBadge } from '@/components/runs/run-status-badge';
 
 interface ListResult<T> {
   data: T[];
@@ -23,8 +23,8 @@ interface ListResult<T> {
 
 export default function RunsPage() {
   const { data, isLoading } = useQuery({
-    queryKey: ["runs", "all"],
-    queryFn: () => api.get<ListResult<Run>>("/api/runs?pageSize=50"),
+    queryKey: ['runs', 'all'],
+    queryFn: () => api.get<ListResult<Run>>('/api/runs?pageSize=50'),
     refetchInterval: 5_000,
   });
 
@@ -44,20 +44,14 @@ export default function RunsPage() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell
-                  colSpan={5}
-                  className="text-center text-muted-foreground"
-                >
+                <TableCell colSpan={5} className="text-center text-muted-foreground">
                   加载中…
                 </TableCell>
               </TableRow>
             )}
             {data?.data.length === 0 && !isLoading && (
               <TableRow>
-                <TableCell
-                  colSpan={5}
-                  className="text-center text-muted-foreground"
-                >
+                <TableCell colSpan={5} className="text-center text-muted-foreground">
                   暂无运行记录。点右上角 + 新建运行 试试。
                 </TableCell>
               </TableRow>

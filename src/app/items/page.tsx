@@ -1,11 +1,11 @@
-"use client";
-import Link from "next/link";
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import type { Item } from "@/lib/db";
-import { api } from "@/lib/api-client";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+'use client';
+import Link from 'next/link';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import type { Item } from '@/lib/db';
+import { api } from '@/lib/api-client';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import {
   Table,
   TableBody,
@@ -13,7 +13,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from '@/components/ui/table';
 
 interface ListResult<T> {
   data: T[];
@@ -23,14 +23,12 @@ interface ListResult<T> {
 }
 
 export default function ItemsPage() {
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState('');
 
   const { data, isLoading } = useQuery({
-    queryKey: ["items", q],
+    queryKey: ['items', q],
     queryFn: () =>
-      api.get<ListResult<Item>>(
-        `/api/items?pageSize=50${q ? `&q=${encodeURIComponent(q)}` : ""}`,
-      ),
+      api.get<ListResult<Item>>(`/api/items?pageSize=50${q ? `&q=${encodeURIComponent(q)}` : ''}`),
     refetchInterval: 10_000,
   });
 
@@ -43,9 +41,7 @@ export default function ItemsPage() {
           onChange={(e) => setQ(e.target.value)}
           className="max-w-md"
         />
-        <span className="self-center text-sm text-muted-foreground">
-          {data?.total ?? 0} 条
-        </span>
+        <span className="self-center text-sm text-muted-foreground">{data?.total ?? 0} 条</span>
       </div>
 
       <Card>
@@ -63,37 +59,27 @@ export default function ItemsPage() {
             <TableBody>
               {isLoading && (
                 <TableRow>
-                  <TableCell
-                    colSpan={5}
-                    className="text-center text-muted-foreground"
-                  >
+                  <TableCell colSpan={5} className="text-center text-muted-foreground">
                     加载中…
                   </TableCell>
                 </TableRow>
               )}
               {data?.data.length === 0 && !isLoading && (
                 <TableRow>
-                  <TableCell
-                    colSpan={5}
-                    className="text-center text-muted-foreground"
-                  >
+                  <TableCell colSpan={5} className="text-center text-muted-foreground">
                     还没有抓取到任何条目。
                   </TableCell>
                 </TableRow>
               )}
               {data?.data.map((it) => {
-                const title =
-                  (it.payload as { title?: string } | null)?.title ?? null;
+                const title = (it.payload as { title?: string } | null)?.title ?? null;
                 return (
                   <TableRow key={it.id}>
                     <TableCell className="font-mono text-xs">{it.id}</TableCell>
                     <TableCell>{it.spider}</TableCell>
                     <TableCell>{it.type}</TableCell>
                     <TableCell>
-                      <Link
-                        href={`/items/${String(it.id)}`}
-                        className="hover:underline"
-                      >
+                      <Link href={`/items/${String(it.id)}`} className="hover:underline">
                         {title ?? it.url}
                       </Link>
                     </TableCell>

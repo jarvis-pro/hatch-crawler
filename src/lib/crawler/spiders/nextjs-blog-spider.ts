@@ -1,8 +1,8 @@
-import { BaseSpider, type SpiderContext } from "../core/spider";
-import { extractNextData } from "../parsers/next-data-parser";
-import { extractLinks, extractMeta, loadHtml } from "../parsers/html-parser";
-import { getHost } from "../utils/url";
-import { logger } from "../utils/logger";
+import { BaseSpider, type SpiderContext } from '../core/spider';
+import { extractNextData } from '../parsers/next-data-parser';
+import { extractLinks, extractMeta, loadHtml } from '../parsers/html-parser';
+import { getHost } from '../utils/url';
+import { logger } from '../utils/logger';
 
 /**
  * Example spider for a Next.js blog/marketing site.
@@ -17,13 +17,11 @@ import { logger } from "../utils/logger";
  * Replace `startUrls` with whatever Next.js site you want to crawl.
  */
 export class NextJsBlogSpider extends BaseSpider {
-  override readonly name = "nextjs-blog";
+  override readonly name = 'nextjs-blog';
   override readonly maxDepth = 2;
-  override readonly startUrls = [
-    { url: "https://nextjs.org/blog", type: "index" },
-  ];
+  override readonly startUrls = [{ url: 'https://nextjs.org/blog', type: 'index' }];
 
-  private readonly allowedHost = "nextjs.org";
+  private readonly allowedHost = 'nextjs.org';
 
   override async parse(ctx: SpiderContext): Promise<void> {
     const { url, response } = ctx;
@@ -58,12 +56,12 @@ export class NextJsBlogSpider extends BaseSpider {
     for (const link of links) {
       if (getHost(link) !== this.allowedHost) continue;
       // For the example, only follow blog post URLs
-      if (!link.includes("/blog/")) continue;
-      ctx.enqueue({ url: link, type: "post" });
+      if (!link.includes('/blog/')) continue;
+      ctx.enqueue({ url: link, type: 'post' });
       added += 1;
     }
 
-    logger.debug({ url, links: links.length, followed: added }, "parsed page");
+    logger.debug({ url, links: links.length, followed: added }, 'parsed page');
     // Suppress unused-variable warning while keeping $ available for subclassing
     void $;
   }

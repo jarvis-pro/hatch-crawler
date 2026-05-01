@@ -1,8 +1,8 @@
-import "server-only";
-import { z } from "zod";
-import { getDb, spiderRepo } from "@/lib/db";
-import { env } from "@/lib/env";
-import { fail, failInternal, failValidation, ok } from "@/lib/api/response";
+import 'server-only';
+import { z } from 'zod';
+import { getDb, spiderRepo } from '@/lib/db';
+import { env } from '@/lib/env';
+import { fail, failInternal, failValidation, ok } from '@/lib/api/response';
 
 const updateSchema = z.object({
   displayName: z.string().min(1).max(128),
@@ -20,25 +20,19 @@ interface RouteContext {
   params: Promise<{ name: string }>;
 }
 
-export async function GET(
-  _req: Request,
-  { params }: RouteContext,
-): Promise<Response> {
+export async function GET(_req: Request, { params }: RouteContext): Promise<Response> {
   try {
     const { name } = await params;
     const db = getDb(env.databaseUrl);
     const spider = await spiderRepo.getByName(db, name);
-    if (!spider) return fail("NOT_FOUND", `spider not found: ${name}`);
+    if (!spider) return fail('NOT_FOUND', `spider not found: ${name}`);
     return ok(spider);
   } catch (err) {
     return failInternal(err);
   }
 }
 
-export async function PUT(
-  req: Request,
-  { params }: RouteContext,
-): Promise<Response> {
+export async function PUT(req: Request, { params }: RouteContext): Promise<Response> {
   try {
     const { name } = await params;
     const body = (await req.json()) as unknown;

@@ -1,9 +1,9 @@
-import Database from "better-sqlite3";
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
-import { createHash } from "node:crypto";
-import { logger } from "../utils/logger";
-import type { CrawlItem, SaveItemResult, Storage } from "./storage";
+import Database from 'better-sqlite3';
+import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { createHash } from 'node:crypto';
+import { logger } from '../utils/logger';
+import type { CrawlItem, SaveItemResult, Storage } from './storage';
 
 /**
  * SQLite 实现。同步 API 包成 async 以满足 Storage 接口。
@@ -20,8 +20,8 @@ export class SqliteStorage implements Storage {
   constructor(path: string) {
     mkdirSync(dirname(path), { recursive: true });
     this.db = new Database(path);
-    this.db.pragma("journal_mode = WAL");
-    this.db.pragma("synchronous = NORMAL");
+    this.db.pragma('journal_mode = WAL');
+    this.db.pragma('synchronous = NORMAL');
 
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS items (
@@ -62,7 +62,7 @@ export class SqliteStorage implements Storage {
       SELECT 1 AS x FROM visited WHERE spider = ? AND url_hash = ?
     `);
 
-    logger.info({ path }, "sqlite storage ready");
+    logger.info({ path }, 'sqlite storage ready');
   }
 
   async saveItem(item: CrawlItem): Promise<SaveItemResult> {
@@ -86,11 +86,7 @@ export class SqliteStorage implements Storage {
     return this.hasVisitedStmt.get(spider, urlHash) !== undefined;
   }
 
-  async markVisited(
-    spider: string,
-    url: string,
-    urlHash: string,
-  ): Promise<void> {
+  async markVisited(spider: string, url: string, urlHash: string): Promise<void> {
     this.markVisitedStmt.run(spider, urlHash, url, Date.now());
   }
 
@@ -100,5 +96,5 @@ export class SqliteStorage implements Storage {
 }
 
 function sha1(s: string): string {
-  return createHash("sha1").update(s).digest("hex");
+  return createHash('sha1').update(s).digest('hex');
 }

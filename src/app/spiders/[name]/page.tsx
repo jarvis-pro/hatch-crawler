@@ -1,19 +1,15 @@
-"use client";
-import { use } from "react";
-import { useQuery } from "@tanstack/react-query";
-import type { Spider } from "@/lib/db";
-import { api } from "@/lib/api-client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { JsonViewer } from "@/components/items/json-viewer";
+'use client';
+import { use } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import type { Spider } from '@/lib/db';
+import { api } from '@/lib/api-client';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { JsonViewer } from '@/components/items/json-viewer';
 
-export default function SpiderDetailPage({
-  params,
-}: {
-  params: Promise<{ name: string }>;
-}) {
+export default function SpiderDetailPage({ params }: { params: Promise<{ name: string }> }) {
   const { name } = use(params);
   const { data, isLoading } = useQuery({
-    queryKey: ["spider", name],
+    queryKey: ['spider', name],
     queryFn: () => api.get<Spider>(`/api/spiders/${name}`),
   });
 
@@ -41,15 +37,15 @@ export default function SpiderDetailPage({
               </ul>
             </dd>
             <dt className="text-muted-foreground">allowedHosts</dt>
-            <dd>{data.allowedHosts.join(", ") || "—"}</dd>
+            <dd>{data.allowedHosts.join(', ') || '—'}</dd>
             <dt className="text-muted-foreground">maxDepth</dt>
             <dd>{data.maxDepth}</dd>
             <dt className="text-muted-foreground">concurrency</dt>
             <dd>{data.concurrency}</dd>
             <dt className="text-muted-foreground">cronSchedule</dt>
-            <dd className="font-mono">{data.cronSchedule ?? "—"}</dd>
+            <dd className="font-mono">{data.cronSchedule ?? '—'}</dd>
             <dt className="text-muted-foreground">enabled</dt>
-            <dd>{data.enabled ? "✓" : "—"}</dd>
+            <dd>{data.enabled ? '✓' : '—'}</dd>
           </dl>
         </CardContent>
       </Card>

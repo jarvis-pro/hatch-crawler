@@ -1,9 +1,9 @@
-import "server-only";
-import { getBoss, getDb, QUEUE_CRAWL, runRepo } from "@/lib/db";
-import type { CrawlJobData } from "@/lib/db";
-import { env } from "../env";
-import { handleCrawlJob } from "./job-handler";
-import { subscribe } from "./event-bus";
+import 'server-only';
+import { getBoss, getDb, QUEUE_CRAWL, runRepo } from '@/lib/db';
+import type { CrawlJobData } from '@/lib/db';
+import { env } from '../env';
+import { handleCrawlJob } from './job-handler';
+import { subscribe } from './event-bus';
 
 /**
  * Worker 启动入口（被 instrumentation.ts 调用）。
@@ -21,7 +21,7 @@ interface WorkerState {
   abortControllers: Map<string, AbortController>;
 }
 
-const CACHE_KEY = "__hatchCrawlerWorker";
+const CACHE_KEY = '__hatchCrawlerWorker';
 const globalCache = globalThis as typeof globalThis & {
   [CACHE_KEY]?: WorkerState;
 };
@@ -71,7 +71,7 @@ export async function startWorker(): Promise<void> {
   // 因 EventBus 已按 runId 索引，这里我们直接每个 runId 注册一个 listener
   // —— 但 pg-boss 拉到 job 时才知道 runId。所以改用 globalThis 上的"abort 表"：
   // 上层 stop 路由直接调 abortRun(runId) 即可，无需经 EventBus
-  console.warn("[worker] started");
+  console.warn('[worker] started');
 }
 
 /** 由 POST /api/runs/:id/stop 调用，触发当前 job 的 AbortSignal */

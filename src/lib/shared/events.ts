@@ -15,18 +15,18 @@ export interface RunStats {
   durationMs: number;
 }
 
-export type EventLevel = "debug" | "info" | "warn" | "error";
+export type EventLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export type CrawlerEvent =
   | {
-      type: "queued";
+      type: 'queued';
       level: EventLevel;
       url: string;
       depth: number;
       at: number;
     }
   | {
-      type: "fetched";
+      type: 'fetched';
       level: EventLevel;
       url: string;
       finalUrl: string;
@@ -35,7 +35,7 @@ export type CrawlerEvent =
       at: number;
     }
   | {
-      type: "fetch_failed";
+      type: 'fetch_failed';
       level: EventLevel;
       url: string;
       attempt: number;
@@ -43,14 +43,14 @@ export type CrawlerEvent =
       at: number;
     }
   | {
-      type: "skipped";
+      type: 'skipped';
       level: EventLevel;
       url: string;
-      reason: "visited" | "non_2xx" | "depth";
+      reason: 'visited' | 'non_2xx' | 'depth';
       at: number;
     }
   | {
-      type: "emitted";
+      type: 'emitted';
       level: EventLevel;
       url: string;
       itemType: string;
@@ -58,27 +58,24 @@ export type CrawlerEvent =
       at: number;
     }
   | {
-      type: "error";
+      type: 'error';
       level: EventLevel;
       url?: string;
       message: string;
       at: number;
     }
   | {
-      type: "stats";
+      type: 'stats';
       level: EventLevel;
       stats: RunStats;
       at: number;
     }
   | {
-      type: "done";
+      type: 'done';
       level: EventLevel;
       stats: RunStats;
       at: number;
     };
 
 /** 便捷：从 type 推导出对应的负载形状 */
-export type CrawlerEventOf<T extends CrawlerEvent["type"]> = Extract<
-  CrawlerEvent,
-  { type: T }
->;
+export type CrawlerEventOf<T extends CrawlerEvent['type']> = Extract<CrawlerEvent, { type: T }>;

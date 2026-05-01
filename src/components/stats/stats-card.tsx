@@ -1,4 +1,4 @@
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from '@/components/ui/card';
 
 export function StatsCard({
   label,
@@ -14,9 +14,7 @@ export function StatsCard({
       <CardContent className="p-6">
         <div className="text-sm text-muted-foreground">{label}</div>
         <div className="mt-2 text-3xl font-semibold tabular-nums">{value}</div>
-        {hint && (
-          <div className="mt-1 text-xs text-muted-foreground">{hint}</div>
-        )}
+        {hint && <div className="mt-1 text-xs text-muted-foreground">{hint}</div>}
       </CardContent>
     </Card>
   );

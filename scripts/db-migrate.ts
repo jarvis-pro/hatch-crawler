@@ -9,23 +9,23 @@
  *   DATABASE_URL=postgres://... pnpm db:migrate
  */
 
-import { runMigrations } from "../src/lib/db/migrate";
+import { runMigrations } from '../src/lib/db/migrate';
 
 const url = process.env.DATABASE_URL;
 if (!url) {
-  console.error("DATABASE_URL is required");
+  console.error('DATABASE_URL is required');
   process.exit(1);
 }
 
 async function main(): Promise<void> {
-  console.log("→ running migrations...");
+  console.log('→ running migrations...');
   const result = await runMigrations(url!);
-  console.log("✓ business tables:", result.businessTablesReady);
-  console.log("✓ pg-boss schema:", result.bossSchemaReady);
-  console.log("\nAll migrations complete.");
+  console.log('✓ business tables:', result.businessTablesReady);
+  console.log('✓ pg-boss schema:', result.bossSchemaReady);
+  console.log('\nAll migrations complete.');
 }
 
 main().catch((err: unknown) => {
-  console.error("migration failed:", err);
+  console.error('migration failed:', err);
   process.exit(1);
 });

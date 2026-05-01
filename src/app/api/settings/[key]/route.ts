@@ -1,8 +1,8 @@
-import "server-only";
-import { z } from "zod";
-import { getDb, settingRepo } from "@/lib/db";
-import { env } from "@/lib/env";
-import { failInternal, failValidation, ok } from "@/lib/api/response";
+import 'server-only';
+import { z } from 'zod';
+import { getDb, settingRepo } from '@/lib/db';
+import { env } from '@/lib/env';
+import { failInternal, failValidation, ok } from '@/lib/api/response';
 
 const putSchema = z.object({
   value: z.unknown(),

@@ -21,7 +21,7 @@ export interface CrawlerConfig {
 }
 
 export const defaultCrawlerConfig: CrawlerConfig = {
-  logLevel: "info",
+  logLevel: 'info',
   concurrency: 4,
   perHostIntervalMs: 500,
   requestTimeoutMs: 15000,

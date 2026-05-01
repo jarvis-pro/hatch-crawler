@@ -1,6 +1,6 @@
-"use client";
-import { useEffect, useRef, useState } from "react";
-import type { CrawlerEvent, EventLevel } from "@/lib/shared";
+'use client';
+import { useEffect, useRef, useState } from 'react';
+import type { CrawlerEvent, EventLevel } from '@/lib/shared';
 
 interface Props {
   runId: string;
@@ -15,27 +15,27 @@ interface LogLine {
 }
 
 const levelColor: Record<EventLevel, string> = {
-  debug: "text-muted-foreground",
-  info: "text-foreground",
-  warn: "text-orange-600",
-  error: "text-red-600",
+  debug: 'text-muted-foreground',
+  info: 'text-foreground',
+  warn: 'text-orange-600',
+  error: 'text-red-600',
 };
 
 function describe(e: CrawlerEvent): string {
   switch (e.type) {
-    case "fetched":
+    case 'fetched':
       return `fetched ${e.url} → ${String(e.status)} (${String(e.durationMs)}ms)`;
-    case "queued":
+    case 'queued':
       return `queued ${e.url} (depth ${String(e.depth)})`;
-    case "skipped":
+    case 'skipped':
       return `skipped ${e.url} (${e.reason})`;
-    case "emitted":
-      return `emitted ${e.itemType}: ${e.url}${e.isNew ? "" : " (dup)"}`;
-    case "fetch_failed":
+    case 'emitted':
+      return `emitted ${e.itemType}: ${e.url}${e.isNew ? '' : ' (dup)'}`;
+    case 'fetch_failed':
       return `fetch failed: ${e.url} — ${e.error}`;
-    case "error":
+    case 'error':
       return `error: ${e.message}`;
-    case "done":
+    case 'done':
       return `done`;
     default:
       return e.type;
@@ -66,8 +66,8 @@ export function LiveLogStream({ runId, onDone }: Props) {
       es.close();
     };
 
-    es.addEventListener("log", onLog);
-    es.addEventListener("done", onDoneEvent);
+    es.addEventListener('log', onLog);
+    es.addEventListener('done', onDoneEvent);
 
     return () => {
       es.close();
@@ -86,9 +86,7 @@ export function LiveLogStream({ runId, onDone }: Props) {
       ref={containerRef}
       className="h-96 overflow-y-auto rounded-md border bg-muted/40 p-3 font-mono text-xs"
     >
-      {lines.length === 0 && (
-        <div className="text-muted-foreground">等待事件…</div>
-      )}
+      {lines.length === 0 && <div className="text-muted-foreground">等待事件…</div>}
       {lines.map((line, i) => (
         <div key={i} className={levelColor[line.level]}>
           <span className="mr-2 text-muted-foreground">

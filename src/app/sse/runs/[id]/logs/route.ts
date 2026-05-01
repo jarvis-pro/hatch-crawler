@@ -1,9 +1,9 @@
-import "server-only";
-import type { CrawlerEvent } from "@/lib/shared";
-import { subscribe } from "@/lib/worker/index";
+import 'server-only';
+import type { CrawlerEvent } from '@/lib/shared';
+import { subscribe } from '@/lib/worker/index';
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 interface Ctx {
   params: Promise<{ id: string }>;
@@ -26,8 +26,7 @@ export async function GET(_req: Request, { params }: Ctx): Promise<Response> {
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const send = (event: string, data: unknown): void => {
-        const payload =
-          `event: ${event}\n` + `data: ${JSON.stringify(data)}\n\n`;
+        const payload = `event: ${event}\n` + `data: ${JSON.stringify(data)}\n\n`;
         try {
           controller.enqueue(encoder.encode(payload));
         } catch {
@@ -38,15 +37,15 @@ export async function GET(_req: Request, { params }: Ctx): Promise<Response> {
       // 心跳：30s 空 comment 防代理超时
       const heartbeat = setInterval(() => {
         try {
-          controller.enqueue(encoder.encode(": ping\n\n"));
+          controller.enqueue(encoder.encode(': ping\n\n'));
         } catch {
           /* closed */
         }
       }, 30_000);
 
       const unsubscribe = subscribe(runId, (event: CrawlerEvent) => {
-        if (event.type === "done") {
-          send("done", event);
+        if (event.type === 'done') {
+          send('done', event);
           // 让 client 自己关闭；server 端这里收尾
           clearInterval(heartbeat);
           unsubscribe();
@@ -56,12 +55,12 @@ export async function GET(_req: Request, { params }: Ctx): Promise<Response> {
             /* already closed */
           }
         } else {
-          send("log", event);
+          send('log', event);
         }
       });
 
       // 初始 ready 信号
-      send("ready", { runId });
+      send('ready', { runId });
     },
     cancel() {
       // 客户端断开，自动收尾在 start 的 unsubscribe / clearInterval 里没法访问到
@@ -71,10 +70,10 @@ export async function GET(_req: Request, { params }: Ctx): Promise<Response> {
 
   return new Response(stream, {
     headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
     },
   });
 }

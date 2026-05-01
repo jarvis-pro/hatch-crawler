@@ -7,22 +7,20 @@
  *  2. 启动 pg-boss worker（消费 crawl 队列、stale-run 清理）
  */
 export async function register(): Promise<void> {
-  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  if (process.env.NEXT_RUNTIME !== 'nodejs') return;
 
   // 动态 import：避免在 edge / build 时把这些 server-only 包拉进来
-  const { runMigrations } = await import("@/lib/db");
-  const { startWorker } = await import("./lib/worker");
+  const { runMigrations } = await import('@/lib/db');
+  const { startWorker } = await import('./lib/worker');
 
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
-    throw new Error(
-      "DATABASE_URL is required (set in .env or docker-compose env)",
-    );
+    throw new Error('DATABASE_URL is required (set in .env or docker-compose env)');
   }
 
-  console.warn("[instrumentation] running migrations...");
+  console.warn('[instrumentation] running migrations...');
   await runMigrations(databaseUrl);
-  console.warn("[instrumentation] migrations done");
+  console.warn('[instrumentation] migrations done');
 
   await startWorker();
 }

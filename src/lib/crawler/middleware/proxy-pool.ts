@@ -1,5 +1,5 @@
-import { HttpsProxyAgent } from "hpagent";
-import { logger } from "../utils/logger";
+import { HttpsProxyAgent } from 'hpagent';
+import { logger } from '../utils/logger';
 
 interface ProxyEntry {
   url: string;
@@ -22,7 +22,7 @@ export class ProxyPool {
   constructor(urls: readonly string[]) {
     this.proxies = urls.map((url) => ({ url, failures: 0, lastUsed: 0 }));
     if (this.proxies.length > 0) {
-      logger.info({ count: this.proxies.length }, "proxy pool initialized");
+      logger.info({ count: this.proxies.length }, 'proxy pool initialized');
     }
   }
 
@@ -52,7 +52,7 @@ export class ProxyPool {
     if (!entry) return;
     entry.failures += 1;
     if (entry.failures >= this.maxFailures) {
-      logger.warn({ proxy: url }, "proxy disabled after repeated failures");
+      logger.warn({ proxy: url }, 'proxy disabled after repeated failures');
     }
   }
 

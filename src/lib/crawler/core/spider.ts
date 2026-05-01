@@ -1,11 +1,11 @@
-import PQueue from "p-queue";
-import type { CrawlerEvent, RunStats } from "@/lib/shared";
-import { Fetcher, type FetchResult } from "./fetcher";
-import { UrlQueue, type QueueItem } from "./queue";
-import type { CrawlItem, Storage } from "../storage/storage";
-import { getCrawlerConfig } from "../config/index";
-import { logger } from "../utils/logger";
-import { urlFingerprint } from "../utils/url";
+import PQueue from 'p-queue';
+import type { CrawlerEvent, RunStats } from '@/lib/shared';
+import { Fetcher, type FetchResult } from './fetcher';
+import { UrlQueue, type QueueItem } from './queue';
+import type { CrawlItem, Storage } from '../storage/storage';
+import { getCrawlerConfig } from '../config/index';
+import { logger } from '../utils/logger';
+import { urlFingerprint } from '../utils/url';
 
 export interface SpiderContext {
   url: string;
@@ -14,9 +14,9 @@ export interface SpiderContext {
   depth: number;
   response: FetchResult;
   /** 让 Spider 派发更多 URL 进队列 */
-  enqueue: (next: Omit<QueueItem, "depth"> & { depth?: number }) => void;
+  enqueue: (next: Omit<QueueItem, 'depth'> & { depth?: number }) => void;
   /** 让 Spider 提交一条解析结果 */
-  emit: (item: Omit<CrawlItem, "spider">) => void;
+  emit: (item: Omit<CrawlItem, 'spider'>) => void;
 }
 
 /**
@@ -48,10 +48,7 @@ export interface RunOptions {
   onEvent?: (e: CrawlerEvent) => void;
 }
 
-export async function runSpider(
-  spider: BaseSpider,
-  opts: RunOptions,
-): Promise<RunStats> {
+export async function runSpider(spider: BaseSpider, opts: RunOptions): Promise<RunStats> {
   const config = getCrawlerConfig();
   const fetcher = opts.fetcher ?? new Fetcher();
   const queue = new UrlQueue();
@@ -71,10 +68,10 @@ export async function runSpider(
 
   // 种子
   for (const seed of spider.startUrls) {
-    if (queue.push({ url: seed.url, type: seed.type ?? "seed", depth: 0 })) {
+    if (queue.push({ url: seed.url, type: seed.type ?? 'seed', depth: 0 })) {
       emit({
-        type: "queued",
-        level: "debug",
+        type: 'queued',
+        level: 'debug',
         url: seed.url,
         depth: 0,
         at: Date.now(),
@@ -88,10 +85,10 @@ export async function runSpider(
     const fp = urlFingerprint(job.url);
     if (await opts.storage.isVisited(spider.name, fp)) {
       emit({
-        type: "skipped",
-        level: "debug",
+        type: 'skipped',
+        level: 'debug',
         url: job.url,
-        reason: "visited",
+        reason: 'visited',
         at: Date.now(),
       });
       return;
@@ -102,8 +99,8 @@ export async function runSpider(
       const response = await fetcher.fetch(job.url);
       stats.fetched += 1;
       emit({
-        type: "fetched",
-        level: "info",
+        type: 'fetched',
+        level: 'info',
         url: job.url,
         finalUrl: response.finalUrl,
         status: response.status,
@@ -113,10 +110,10 @@ export async function runSpider(
 
       if (response.status >= 400) {
         emit({
-          type: "skipped",
-          level: "warn",
+          type: 'skipped',
+          level: 'warn',
           url: job.url,
-          reason: "non_2xx",
+          reason: 'non_2xx',
           at: Date.now(),
         });
         return;
@@ -124,7 +121,7 @@ export async function runSpider(
 
       const ctx: SpiderContext = {
         url: job.url,
-        type: job.type ?? "page",
+        type: job.type ?? 'page',
         meta: job.meta ?? {},
         depth: job.depth,
         response,
@@ -132,10 +129,10 @@ export async function runSpider(
           const depth = next.depth ?? job.depth + 1;
           if (depth > spider.maxDepth) {
             emit({
-              type: "skipped",
-              level: "debug",
+              type: 'skipped',
+              level: 'debug',
               url: next.url,
-              reason: "depth",
+              reason: 'depth',
               at: Date.now(),
             });
             return;
@@ -148,8 +145,8 @@ export async function runSpider(
           });
           if (ok) {
             emit({
-              type: "queued",
-              level: "debug",
+              type: 'queued',
+              level: 'debug',
               url: next.url,
               depth,
               at: Date.now(),
@@ -165,8 +162,8 @@ export async function runSpider(
             .then(({ isNew }) => {
               if (isNew) stats.newItems += 1;
               emit({
-                type: "emitted",
-                level: "info",
+                type: 'emitted',
+                level: 'info',
                 url: item.url,
                 itemType: item.type,
                 isNew,
@@ -176,8 +173,8 @@ export async function runSpider(
             .catch((err: unknown) => {
               stats.errors += 1;
               emit({
-                type: "error",
-                level: "error",
+                type: 'error',
+                level: 'error',
                 url: item.url,
                 message: (err as Error).message,
                 at: Date.now(),
@@ -190,10 +187,10 @@ export async function runSpider(
       await opts.storage.markVisited(spider.name, job.url, fp);
     } catch (err) {
       stats.errors += 1;
-      logger.error({ url: job.url, err: (err as Error).message }, "job failed");
+      logger.error({ url: job.url, err: (err as Error).message }, 'job failed');
       emit({
-        type: "error",
-        level: "error",
+        type: 'error',
+        level: 'error',
         url: job.url,
         message: (err as Error).message,
         at: Date.now(),
@@ -203,10 +200,7 @@ export async function runSpider(
 
   function drain(): void {
     if (opts.signal?.aborted) return;
-    while (
-      queue.size > 0 &&
-      pool.size + pool.pending < config.concurrency * 4
-    ) {
+    while (queue.size > 0 && pool.size + pool.pending < config.concurrency * 4) {
       const job = queue.pop();
       if (!job) break;
       void pool.add(() => handleJob(job));
@@ -221,7 +215,7 @@ export async function runSpider(
   clearInterval(drainInterval);
 
   stats.durationMs = Date.now() - start;
-  emit({ type: "done", level: "info", stats, at: Date.now() });
-  logger.info({ spider: spider.name, ...stats }, "spider finished");
+  emit({ type: 'done', level: 'info', stats, at: Date.now() });
+  logger.info({ spider: spider.name, ...stats }, 'spider finished');
   return stats;
 }

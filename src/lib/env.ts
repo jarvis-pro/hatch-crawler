@@ -5,7 +5,7 @@
  * 用 getter 实现"懒检查"——只在真正访问字段时才校验，
  * 避免 import 这个文件就把进程整崩（比如 dev 服务起来前缺 DATABASE_URL）。
  */
-import "server-only";
+import 'server-only';
 
 function required(name: string): string {
   const v = process.env[name];
@@ -22,9 +22,9 @@ function required(name: string): string {
 
 export const env = {
   get databaseUrl(): string {
-    return required("DATABASE_URL");
+    return required('DATABASE_URL');
   },
   get logLevel(): string {
-    return process.env.LOG_LEVEL ?? "info";
+    return process.env.LOG_LEVEL ?? 'info';
   },
 };

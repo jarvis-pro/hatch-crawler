@@ -1,15 +1,15 @@
-import { createHash } from "node:crypto";
+import { createHash } from 'node:crypto';
 
 /** Stable fingerprint for a URL — used for dedup and incremental crawl. */
 export function urlFingerprint(url: string): string {
   // Normalize: strip fragment, sort query params
   try {
     const u = new URL(url);
-    u.hash = "";
+    u.hash = '';
     u.searchParams.sort();
-    return createHash("sha1").update(u.toString()).digest("hex");
+    return createHash('sha1').update(u.toString()).digest('hex');
   } catch {
-    return createHash("sha1").update(url).digest("hex");
+    return createHash('sha1').update(url).digest('hex');
   }
 }
 
@@ -17,7 +17,7 @@ export function getHost(url: string): string {
   try {
     return new URL(url).host;
   } catch {
-    return "";
+    return '';
   }
 }
 

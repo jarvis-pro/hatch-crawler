@@ -1,6 +1,6 @@
-import { EventEmitter } from "node:events";
-import "server-only";
-import type { CrawlerEvent } from "@/lib/shared";
+import { EventEmitter } from 'node:events';
+import 'server-only';
+import type { CrawlerEvent } from '@/lib/shared';
 
 /**
  * 进程内事件总线。
@@ -11,7 +11,7 @@ import type { CrawlerEvent } from "@/lib/shared";
  * 单进程合并部署的关键 —— 不需要 Redis pub/sub。
  */
 
-const CACHE_KEY = "__hatchCrawlerEventBus";
+const CACHE_KEY = '__hatchCrawlerEventBus';
 const globalCache = globalThis as typeof globalThis & {
   [CACHE_KEY]?: EventEmitter;
 };
@@ -30,10 +30,7 @@ export function publish(runId: string, event: CrawlerEvent): void {
   getEmitter().emit(`run:${runId}`, event);
 }
 
-export function subscribe(
-  runId: string,
-  listener: (event: CrawlerEvent) => void,
-): () => void {
+export function subscribe(runId: string, listener: (event: CrawlerEvent) => void): () => void {
   const channel = `run:${runId}`;
   getEmitter().on(channel, listener);
   return () => {

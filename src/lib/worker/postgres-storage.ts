@@ -1,7 +1,7 @@
-import "server-only";
-import { createHash } from "node:crypto";
-import { type Db, itemRepo, visitedRepo } from "@/lib/db";
-import type { CrawlItem, SaveItemResult, Storage } from "@/lib/crawler";
+import 'server-only';
+import { createHash } from 'node:crypto';
+import { type Db, itemRepo, visitedRepo } from '@/lib/db';
+import type { CrawlItem, SaveItemResult, Storage } from '@/lib/crawler';
 
 /**
  * Storage 接口的 Postgres 实现。
@@ -29,11 +29,7 @@ export class PostgresStorage implements Storage {
     return visitedRepo.isVisited(this.db, spider, urlHash);
   }
 
-  async markVisited(
-    spider: string,
-    url: string,
-    urlHash: string,
-  ): Promise<void> {
+  async markVisited(spider: string, url: string, urlHash: string): Promise<void> {
     await visitedRepo.mark(this.db, spider, url, urlHash);
   }
 }
@@ -42,10 +38,10 @@ export class PostgresStorage implements Storage {
 export function urlFingerprint(url: string): string {
   try {
     const u = new URL(url);
-    u.hash = "";
+    u.hash = '';
     u.searchParams.sort();
-    return createHash("sha1").update(u.toString()).digest("hex");
+    return createHash('sha1').update(u.toString()).digest('hex');
   } catch {
-    return createHash("sha1").update(url).digest("hex");
+    return createHash('sha1').update(url).digest('hex');
   }
 }

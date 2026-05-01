@@ -1,5 +1,5 @@
-import pino, { type LoggerOptions } from "pino";
-import { config } from "../config/index";
+import pino, { type LoggerOptions } from 'pino';
+import { config } from '../config/index';
 
 /**
  * 全局 logger。
@@ -17,18 +17,18 @@ const isBundled =
   Boolean(process.env.NEXT_RUNTIME) ||
   // 兜底：webpack 打包后 typeof __webpack_require__ !== "undefined"
   // @ts-expect-error 运行时才有的全局变量
-  typeof __webpack_require__ === "function";
+  typeof __webpack_require__ === 'function';
 
 const baseOptions: LoggerOptions = { level: config.logLevel };
 
 const prettyOptions: LoggerOptions = {
   ...baseOptions,
   transport: {
-    target: "pino-pretty",
+    target: 'pino-pretty',
     options: {
       colorize: true,
-      translateTime: "HH:MM:ss",
-      ignore: "pid,hostname",
+      translateTime: 'HH:MM:ss',
+      ignore: 'pid,hostname',
     },
   },
 };

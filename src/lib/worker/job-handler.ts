@@ -1,11 +1,11 @@
-import "server-only";
-import { type Db, eventRepo, runRepo } from "@/lib/db";
-import { runSpider, setCrawlerConfig } from "@/lib/crawler";
-import type { CrawlerEvent, EventLevel } from "@/lib/shared";
-import type { CrawlJobData } from "@/lib/db";
-import { getSpiderFactory } from "../spider-registry";
-import { PostgresStorage } from "./postgres-storage";
-import { publish } from "./event-bus";
+import 'server-only';
+import { type Db, eventRepo, runRepo } from '@/lib/db';
+import { runSpider, setCrawlerConfig } from '@/lib/crawler';
+import type { CrawlerEvent, EventLevel } from '@/lib/shared';
+import type { CrawlJobData } from '@/lib/db';
+import { getSpiderFactory } from '../spider-registry';
+import { PostgresStorage } from './postgres-storage';
+import { publish } from './event-bus';
 
 /**
  * 单个 crawl job 的处理函数。
@@ -28,12 +28,7 @@ export async function handleCrawlJob(
 
   const factory = getSpiderFactory(spider);
   if (!factory) {
-    await runRepo.markFinished(
-      db,
-      runId,
-      "failed",
-      `unknown spider: ${spider}`,
-    );
+    await runRepo.markFinished(db, runId, 'failed', `unknown spider: ${spider}`);
     throw new Error(`unknown spider: ${spider}`);
   }
 
@@ -49,7 +44,7 @@ export async function handleCrawlJob(
     publish(runId, event);
 
     // debug 级别不入库
-    if (event.level === "debug") return;
+    if (event.level === 'debug') return;
 
     void eventRepo
       .append(db, {
@@ -64,12 +59,12 @@ export async function handleCrawlJob(
       });
 
     // 增量统计也异步同步到 runs 表
-    if (event.type === "fetched") {
+    if (event.type === 'fetched') {
       void runRepo.incrementStats(db, runId, { fetched: 1 }).catch(() => {});
-    } else if (event.type === "emitted") {
+    } else if (event.type === 'emitted') {
       const delta = event.isNew ? { emitted: 1, newItems: 1 } : { emitted: 1 };
       void runRepo.incrementStats(db, runId, delta).catch(() => {});
-    } else if (event.type === "error") {
+    } else if (event.type === 'error') {
       void runRepo.incrementStats(db, runId, { errors: 1 }).catch(() => {});
     }
   };
@@ -80,32 +75,32 @@ export async function handleCrawlJob(
     await runSpider(spiderInstance, { storage, onEvent, signal });
 
     if (signal.aborted) {
-      await runRepo.markFinished(db, runId, "stopped");
+      await runRepo.markFinished(db, runId, 'stopped');
     } else {
-      await runRepo.markFinished(db, runId, "completed");
+      await runRepo.markFinished(db, runId, 'completed');
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await runRepo.markFinished(db, runId, "failed", message);
+    await runRepo.markFinished(db, runId, 'failed', message);
     throw err;
   }
 }
 
 function extractMessage(event: CrawlerEvent): string {
   switch (event.type) {
-    case "fetched":
+    case 'fetched':
       return `fetched ${event.url} → ${String(event.status)} (${String(event.durationMs)}ms)`;
-    case "queued":
+    case 'queued':
       return `queued ${event.url} (depth ${String(event.depth)})`;
-    case "skipped":
+    case 'skipped':
       return `skipped ${event.url} (${event.reason})`;
-    case "emitted":
-      return `emitted ${event.itemType}: ${event.url}${event.isNew ? "" : " (dup)"}`;
-    case "fetch_failed":
+    case 'emitted':
+      return `emitted ${event.itemType}: ${event.url}${event.isNew ? '' : ' (dup)'}`;
+    case 'fetch_failed':
       return `fetch failed (attempt ${String(event.attempt)}): ${event.url} — ${event.error}`;
-    case "error":
+    case 'error':
       return event.message;
-    case "done":
+    case 'done':
       return `done: fetched=${String(event.stats.fetched)} new=${String(event.stats.newItems)} errors=${String(event.stats.errors)}`;
     default:
       return event.type;

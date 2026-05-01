@@ -1,9 +1,9 @@
-"use client";
-import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-import type { Spider } from "@/lib/db";
+'use client';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import type { Spider } from '@/lib/db';
 import {
   Dialog,
   DialogContent,
@@ -12,9 +12,9 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { api, ApiClientError } from "@/lib/api-client";
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { api, ApiClientError } from '@/lib/api-client';
 
 export function NewRunDialog({ trigger }: { trigger: React.ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -23,18 +23,18 @@ export function NewRunDialog({ trigger }: { trigger: React.ReactNode }) {
   const qc = useQueryClient();
 
   const { data: spiders } = useQuery({
-    queryKey: ["spiders"],
-    queryFn: () => api.get<Spider[]>("/api/spiders"),
+    queryKey: ['spiders'],
+    queryFn: () => api.get<Spider[]>('/api/spiders'),
     enabled: open,
   });
 
   const mutation = useMutation({
     mutationFn: (spider: string) =>
-      api.post<{ id: string }>("/api/runs", { spider, overrides: {} }),
+      api.post<{ id: string }>('/api/runs', { spider, overrides: {} }),
     onSuccess: ({ id }) => {
-      toast.success("Run 已入队");
+      toast.success('Run 已入队');
       setOpen(false);
-      void qc.invalidateQueries({ queryKey: ["runs"] });
+      void qc.invalidateQueries({ queryKey: ['runs'] });
       router.push(`/runs/${id}`);
     },
     onError: (err) => {
@@ -56,7 +56,7 @@ export function NewRunDialog({ trigger }: { trigger: React.ReactNode }) {
             <label
               key={s.name}
               className={`flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 ${
-                selected === s.name ? "border-primary" : ""
+                selected === s.name ? 'border-primary' : ''
               }`}
             >
               <input
@@ -70,9 +70,7 @@ export function NewRunDialog({ trigger }: { trigger: React.ReactNode }) {
                 <div className="font-medium">{s.displayName}</div>
                 <div className="text-xs text-muted-foreground">{s.name}</div>
               </div>
-              {!s.enabled && (
-                <span className="text-xs text-muted-foreground">disabled</span>
-              )}
+              {!s.enabled && <span className="text-xs text-muted-foreground">disabled</span>}
             </label>
           ))}
           {spiders?.length === 0 && (
@@ -89,7 +87,7 @@ export function NewRunDialog({ trigger }: { trigger: React.ReactNode }) {
             disabled={!selected || mutation.isPending}
             onClick={() => selected && mutation.mutate(selected)}
           >
-            {mutation.isPending ? "启动中…" : "启动"}
+            {mutation.isPending ? '启动中…' : '启动'}
           </Button>
         </DialogFooter>
       </DialogContent>

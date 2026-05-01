@@ -1,5 +1,5 @@
-"use client";
-import { QueryClient } from "@tanstack/react-query";
+'use client';
+import { QueryClient } from '@tanstack/react-query';
 
 /** TanStack Query 单例（client-side） */
 let _client: QueryClient | null = null;

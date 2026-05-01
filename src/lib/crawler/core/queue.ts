@@ -1,4 +1,4 @@
-import { urlFingerprint } from "../utils/url";
+import { urlFingerprint } from '../utils/url';
 
 export interface QueueItem {
   url: string;

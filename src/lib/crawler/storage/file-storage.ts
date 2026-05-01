@@ -1,5 +1,5 @@
-import { mkdirSync, createWriteStream, type WriteStream } from "node:fs";
-import { dirname } from "node:path";
+import { mkdirSync, createWriteStream, type WriteStream } from 'node:fs';
+import { dirname } from 'node:path';
 
 /**
  * Append-only JSON Lines writer.
@@ -14,11 +14,11 @@ export class JsonlWriter {
 
   constructor(path: string) {
     mkdirSync(dirname(path), { recursive: true });
-    this.stream = createWriteStream(path, { flags: "a", encoding: "utf8" });
+    this.stream = createWriteStream(path, { flags: 'a', encoding: 'utf8' });
   }
 
   write(record: unknown): void {
-    this.stream.write(JSON.stringify(record) + "\n");
+    this.stream.write(JSON.stringify(record) + '\n');
   }
 
   async close(): Promise<void> {

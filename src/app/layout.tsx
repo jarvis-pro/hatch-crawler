@@ -1,13 +1,13 @@
-import type { Metadata } from "next";
-import type { ReactNode } from "react";
-import "./globals.css";
-import { Providers } from "./providers";
-import { Sidebar } from "@/components/nav/sidebar";
-import { Topbar } from "@/components/nav/topbar";
+import type { Metadata } from 'next';
+import type { ReactNode } from 'react';
+import './globals.css';
+import { Providers } from './providers';
+import { Sidebar } from '@/components/nav/sidebar';
+import { Topbar } from '@/components/nav/topbar';
 
 export const metadata: Metadata = {
-  title: "hatch-crawler",
-  description: "Next.js 站点爬虫看板",
+  title: 'hatch-crawler',
+  description: 'Next.js 站点爬虫看板',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -19,9 +19,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <Sidebar />
             <div className="flex flex-1 flex-col overflow-hidden">
               <Topbar />
-              <main className="flex-1 overflow-y-auto bg-muted/30 p-6">
-                {children}
-              </main>
+              <main className="flex-1 overflow-y-auto bg-muted/30 p-6">{children}</main>
             </div>
           </div>
         </Providers>

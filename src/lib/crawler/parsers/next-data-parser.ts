@@ -1,4 +1,4 @@
-import * as cheerio from "cheerio";
+import * as cheerio from 'cheerio';
 
 /**
  * Next.js page-data extraction.
@@ -26,7 +26,7 @@ export interface NextData {
 /** Extract the parsed __NEXT_DATA__ JSON from a Next.js HTML response. */
 export function extractNextData(html: string): NextData | null {
   const $ = cheerio.load(html);
-  const raw = $("script#__NEXT_DATA__").first().contents().text();
+  const raw = $('script#__NEXT_DATA__').first().contents().text();
   if (!raw) return null;
   try {
     return JSON.parse(raw) as NextData;
@@ -45,8 +45,8 @@ export function extractNextData(html: string): NextData | null {
  */
 export function buildNextDataUrl(pageUrl: string, buildId: string): string {
   const u = new URL(pageUrl);
-  let path = u.pathname.replace(/\/+$/, "");
-  if (path === "") path = "/index";
+  let path = u.pathname.replace(/\/+$/, '');
+  if (path === '') path = '/index';
   u.pathname = `/_next/data/${buildId}${path}.json`;
   return u.toString();
 }
