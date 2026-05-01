@@ -43,24 +43,33 @@ export async function handleCrawlJob(
   // 组装 Spider 构造参数：overrides 中的值 + 平台凭据注入
   const spiderParams: Record<string, unknown> = { ...(overrides ?? {}) };
 
+  // 记录本次 run 使用的账号 ID（用于失败后回写 failureCount）
+  const usedAccountIds: number[] = [];
+
   if (entry.platform) {
     // 自动注入平台 API key（如有）
-    const apiKey = await accountRepo.getActivePayload(
+    const apiKeyAccount = await accountRepo.getActiveAccount(
       db,
       entry.platform,
       'apikey',
       env.accountsMasterKey,
     );
-    if (apiKey) spiderParams.apiKey = apiKey;
+    if (apiKeyAccount) {
+      spiderParams.apiKey = apiKeyAccount.payload;
+      usedAccountIds.push(apiKeyAccount.id);
+    }
 
     // 自动注入平台 Cookie（如有，用于 XHS 等 cookie 鉴权平台）
-    const cookie = await accountRepo.getActivePayload(
+    const cookieAccount = await accountRepo.getActiveAccount(
       db,
       entry.platform,
       'cookie',
       env.accountsMasterKey,
     );
-    if (cookie) spiderParams.cookie = cookie;
+    if (cookieAccount) {
+      spiderParams.cookie = cookieAccount.payload;
+      usedAccountIds.push(cookieAccount.id);
+    }
   }
 
   // 注入代理列表（从 settings 表的 proxy_pool key 读取）
@@ -111,6 +120,10 @@ export async function handleCrawlJob(
     const message = err instanceof Error ? err.message : String(err);
     await runRepo.markFinished(db, runId, 'failed', message);
     void notifyWebhook(db, runId, spider, 'failed', message).catch(() => {});
+    // 将失败记录到本次使用的账号（触发 failureCount 递增，超阈值自动 ban）
+    for (const accountId of usedAccountIds) {
+      void accountRepo.recordFailure(db, accountId).catch(() => {});
+    }
     throw err;
   }
 }
