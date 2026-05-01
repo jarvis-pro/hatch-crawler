@@ -16,6 +16,13 @@ export interface CrawlItem {
   type: string;
   payload: Record<string, unknown>;
   fetchedAt?: number;
+  // Phase 5：多平台扩展字段（可选，向后兼容）
+  /** 平台标识，如 'nextjs-blog' / 'youtube' / 'bilibili' */
+  platform?: string;
+  /** 资源类型，如 'article' / 'video' / 'audio' / 'image' / 'post' */
+  kind?: string;
+  /** 平台原生 ID（比 URL 更稳定的去重 key） */
+  sourceId?: string;
 }
 
 export interface SaveItemResult {

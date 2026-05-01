@@ -50,6 +50,10 @@ export type Event = Omit<PrismaEvent, 'payload'> & {
 
 export type Item = Omit<PrismaItem, 'payload'> & {
   payload: Record<string, unknown>;
+  // Phase 5 列（Prisma 已映射，这里收紧类型）
+  platform: string | null;
+  kind: string | null;
+  sourceId: string | null;
 };
 
 export type Visited = PrismaVisited;
@@ -91,4 +95,8 @@ export type NewItem = {
   urlHash: string;
   contentHash: string;
   payload: Record<string, unknown>;
+  // Phase 5
+  platform?: string | null;
+  kind?: string | null;
+  sourceId?: string | null;
 };

@@ -24,7 +24,7 @@ export async function append(db: Db, input: AppendEventInput): Promise<void> {
       level: input.level,
       type: input.type,
       message: input.message ?? null,
-      payload: input.payload ?? {},
+      payload: (input.payload ?? {}) as Prisma.InputJsonValue,
     },
   });
 }

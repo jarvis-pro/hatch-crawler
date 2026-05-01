@@ -20,7 +20,7 @@ export async function create(db: Db, input: CreateRunInput): Promise<{ id: strin
     data: {
       spiderName: input.spiderName,
       triggerType: input.triggerType,
-      overrides: input.overrides ?? {},
+      overrides: (input.overrides ?? {}) as import('@prisma/client').Prisma.InputJsonValue,
     },
     select: { id: true },
   });
