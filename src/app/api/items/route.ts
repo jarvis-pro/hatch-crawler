@@ -1,7 +1,7 @@
 import 'server-only';
 import { getDb, itemRepo } from '@/lib/db';
 import { env } from '@/lib/env';
-import { failInternal, ok } from '@/lib/api/response';
+import { fail, failInternal, ok } from '@/lib/api/response';
 
 export async function GET(req: Request): Promise<Response> {
   try {
@@ -27,6 +27,42 @@ export async function GET(req: Request): Promise<Response> {
       pageSize: Number.isFinite(pageSize) ? pageSize : 20,
     });
     return ok(result);
+  } catch (err) {
+    return failInternal(err);
+  }
+}
+
+/**
+ * DELETE /api/items
+ * Body: { ids: number[] }
+ * 批量删除指定 id 的条目。
+ */
+export async function DELETE(req: Request): Promise<Response> {
+  try {
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return fail('VALIDATION_ERROR', 'request body must be JSON');
+    }
+
+    if (
+      typeof body !== 'object' ||
+      body === null ||
+      !Array.isArray((body as Record<string, unknown>).ids)
+    ) {
+      return fail('VALIDATION_ERROR', 'body must contain ids array');
+    }
+
+    const ids = ((body as Record<string, unknown>).ids as unknown[])
+      .map(Number)
+      .filter((n) => Number.isFinite(n) && n > 0);
+
+    if (ids.length === 0) return fail('VALIDATION_ERROR', 'ids array is empty or invalid');
+
+    const db = getDb(env.databaseUrl);
+    const deleted = await itemRepo.deleteMany(db, ids);
+    return ok({ deleted });
   } catch (err) {
     return failInternal(err);
   }

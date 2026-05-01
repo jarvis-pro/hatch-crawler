@@ -1,7 +1,8 @@
 'use client';
 import Link from 'next/link';
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import type { Item } from '@/lib/db';
 import { api } from '@/lib/api-client';
 import { Badge } from '@/components/ui/badge';
@@ -86,9 +87,18 @@ function itemsToXls(items: Item[]): string {
   const esc = (s: string) =>
     s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-  const header = EXPORT_COLUMNS.map(
+  const rawHeader = EXPORT_COLUMNS.map(
     (c) => `<Cell><Data ss:Type="String">${esc(c.label)}</Data></Cell>`,
   ).join('');
+
+  const headerRow =
+    '<Row>' +
+    rawHeader
+      .split('</Cell>')
+      .filter(Boolean)
+      .map((c) => c.replace('<Cell>', '<Cell ss:StyleID="header">') + '</Cell>')
+      .join('') +
+    '</Row>';
 
   const dataRows = items
     .map((it) => {
@@ -112,11 +122,7 @@ function itemsToXls(items: Item[]): string {
   </Styles>
   <Worksheet ss:Name="条目列表">
     <Table>
-      <Row>${header
-        .split('</Cell>')
-        .filter(Boolean)
-        .map((c) => c.replace('<Cell>', '<Cell ss:StyleID="header">') + '</Cell>')
-        .join('')}</Row>
+      ${headerRow}
       ${dataRows}
     </Table>
   </Worksheet>
@@ -155,11 +161,15 @@ export default function ItemsPage() {
   const [kind, setKind] = useState('');
   const [page, setPage] = useState(1);
   const [exporting, setExporting] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+
+  const queryClient = useQueryClient();
 
   // 筛选条件变化时重置到第 1 页
   function setFilter(fn: () => void) {
     fn();
     setPage(1);
+    setSelected(new Set());
   }
 
   function buildParams(overridePage?: number, overridePageSize?: number) {
@@ -180,23 +190,75 @@ export default function ItemsPage() {
   });
 
   const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 1;
+  const currentIds = data?.data.map((it) => it.id) ?? [];
+  const allOnPageSelected = currentIds.length > 0 && currentIds.every((id) => selected.has(id));
 
-  // ── 导出：拉取当前筛选条件下全部数据 ──────────────────────────────────────
-  async function handleExport(format: 'csv' | 'json' | 'xls') {
+  // ── 全选/取消全选当前页 ────────────────────────────────────────────────────
+  function toggleSelectAll() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allOnPageSelected) {
+        currentIds.forEach((id) => next.delete(id));
+      } else {
+        currentIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  }
+
+  function toggleOne(id: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // ── 批量删除 ──────────────────────────────────────────────────────────────
+  const deleteMutation = useMutation({
+    mutationFn: (ids: number[]) => api.delete<{ deleted: number }>('/api/items', { ids }),
+    onSuccess: (res) => {
+      toast.success(`已删除 ${res.deleted} 条条目`);
+      setSelected(new Set());
+      void queryClient.invalidateQueries({ queryKey: ['items'] });
+    },
+    onError: (err: Error) => {
+      toast.error(`删除失败：${err.message}`);
+    },
+  });
+
+  function handleDeleteSelected() {
+    if (selected.size === 0) return;
+    if (!confirm(`确定删除选中的 ${selected.size} 条条目？此操作不可撤销。`)) return;
+    deleteMutation.mutate([...selected]);
+  }
+
+  // ── 导出：拉取当前筛选条件下全部数据 / 仅选中行 ──────────────────────────
+  async function handleExport(format: 'csv' | 'json' | 'xls', onlySelected = false) {
     setExporting(true);
     try {
-      const all = await api.get<ListResult<Item>>(`/api/items?${buildParams(1, 5000).toString()}`);
+      let items: Item[];
+      if (onlySelected && selected.size > 0) {
+        // 仅导出选中行（当前页已加载，直接从 data 过滤）
+        items = (data?.data ?? []).filter((it) => selected.has(it.id));
+      } else {
+        const all = await api.get<ListResult<Item>>(
+          `/api/items?${buildParams(1, 5000).toString()}`,
+        );
+        items = all.data;
+      }
       const ts = new Date().toISOString().slice(0, 10);
       if (format === 'csv') {
-        downloadBlob(itemsToCsv(all.data), `items-${ts}.csv`, 'text/csv;charset=utf-8;');
+        downloadBlob(itemsToCsv(items), `items-${ts}.csv`, 'text/csv;charset=utf-8;');
       } else if (format === 'xls') {
         downloadBlob(
-          itemsToXls(all.data),
+          itemsToXls(items),
           `items-${ts}.xls`,
           'application/vnd.ms-excel;charset=utf-8;',
         );
       } else {
-        downloadBlob(JSON.stringify(all.data, null, 2), `items-${ts}.json`, 'application/json');
+        downloadBlob(JSON.stringify(items, null, 2), `items-${ts}.json`, 'application/json');
       }
     } finally {
       setExporting(false);
@@ -204,7 +266,7 @@ export default function ItemsPage() {
   }
 
   // platform / kind 选项从当前页数据推断（静态已知平台兜底）
-  const knownPlatforms = ['youtube', 'bilibili', 'xhs', 'nextjs-blog'];
+  const knownPlatforms = ['youtube', 'bilibili', 'xhs', 'weibo', 'douyin', 'nextjs-blog'];
   const knownKinds = Object.keys(KIND_LABELS);
 
   return (
@@ -246,7 +308,34 @@ export default function ItemsPage() {
 
         <span className="flex-1 text-sm text-muted-foreground">共 {data?.total ?? 0} 条</span>
 
-        {/* 导出按钮 */}
+        {/* 批量操作（有选中时显示） */}
+        {selected.size > 0 && (
+          <>
+            <span className="text-sm font-medium text-muted-foreground">
+              已选 {selected.size} 条
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={exporting}
+              onClick={() => {
+                void handleExport('xls', true);
+              }}
+            >
+              导出选中 Excel
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={deleteMutation.isPending}
+              onClick={handleDeleteSelected}
+            >
+              {deleteMutation.isPending ? '删除中…' : `删除 ${selected.size} 条`}
+            </Button>
+          </>
+        )}
+
+        {/* 全量导出按钮 */}
         <Button
           size="sm"
           variant="outline"
@@ -284,6 +373,16 @@ export default function ItemsPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  {/* 全选复选框 */}
+                  <input
+                    type="checkbox"
+                    checked={allOnPageSelected}
+                    onChange={toggleSelectAll}
+                    className="h-4 w-4 cursor-pointer rounded border-gray-300"
+                    aria-label="全选当前页"
+                  />
+                </TableHead>
                 <TableHead>#</TableHead>
                 <TableHead>平台 / Spider</TableHead>
                 <TableHead>类型</TableHead>
@@ -294,14 +393,14 @@ export default function ItemsPage() {
             <TableBody>
               {isLoading && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground">
                     加载中…
                   </TableCell>
                 </TableRow>
               )}
               {data?.data.length === 0 && !isLoading && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground">
                     还没有抓取到任何条目。
                   </TableCell>
                 </TableRow>
@@ -310,8 +409,18 @@ export default function ItemsPage() {
                 const title = (it.payload as { title?: string } | null)?.title ?? null;
                 const kindLabel = it.kind ? (KIND_LABELS[it.kind] ?? it.kind) : null;
                 const kindColor = it.kind ? (KIND_COLORS[it.kind] ?? '') : '';
+                const isChecked = selected.has(it.id);
                 return (
-                  <TableRow key={it.id}>
+                  <TableRow key={it.id} className={isChecked ? 'bg-muted/40' : undefined}>
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleOne(it.id)}
+                        className="h-4 w-4 cursor-pointer rounded border-gray-300"
+                        aria-label={`选择条目 ${it.id}`}
+                      />
+                    </TableCell>
                     <TableCell className="font-mono text-xs">{it.id}</TableCell>
                     <TableCell>
                       <div className="flex flex-col gap-0.5">
@@ -360,7 +469,10 @@ export default function ItemsPage() {
             size="sm"
             variant="outline"
             disabled={page <= 1}
-            onClick={() => setPage((p) => p - 1)}
+            onClick={() => {
+              setPage((p) => p - 1);
+              setSelected(new Set());
+            }}
           >
             ‹ 上一页
           </Button>
@@ -371,7 +483,10 @@ export default function ItemsPage() {
             size="sm"
             variant="outline"
             disabled={page >= totalPages}
-            onClick={() => setPage((p) => p + 1)}
+            onClick={() => {
+              setPage((p) => p + 1);
+              setSelected(new Set());
+            }}
           >
             下一页 ›
           </Button>
