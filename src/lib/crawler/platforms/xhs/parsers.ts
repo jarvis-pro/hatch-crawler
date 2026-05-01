@@ -126,6 +126,32 @@ export interface XhsNoteDetailResponse {
   };
 }
 
+// ── 评论接口 GET /api/sns/web/v1/comment/page ─────────────────────────────────
+
+export interface XhsComment {
+  id: string;
+  content: string;
+  user?: XhsUser;
+  like_count?: string | number;
+  sub_comment_count?: string | number;
+  /** 发布时间（毫秒级 Unix 时间戳） */
+  create_time?: number;
+  ip_location?: string;
+  at_users?: Array<{ userid?: string; nickname?: string }>;
+  sub_comments?: XhsComment[];
+}
+
+export interface XhsCommentPageResponse {
+  code: number;
+  success?: boolean;
+  msg?: string;
+  data?: {
+    comments?: XhsComment[];
+    has_more?: boolean;
+    cursor?: string;
+  };
+}
+
 // ── Payload 映射 ──────────────────────────────────────────────────────────────
 
 /**
@@ -216,6 +242,36 @@ export function noteDetailToPayload(
     media: images.length > 0 ? images : undefined,
     videoDuration: detail.video?.duration,
     noteId,
+  };
+}
+
+/**
+ * 将单条评论转换为标准 payload。
+ * subComments（二级评论）作为嵌套数组一并存入。
+ */
+export function commentToPayload(comment: XhsComment, noteId: string): Record<string, unknown> {
+  return {
+    kind: 'comment',
+    commentId: comment.id,
+    noteId,
+    content: comment.content,
+    author: comment.user
+      ? {
+          id: comment.user.userid ?? comment.user.user_id,
+          name: comment.user.nickname,
+          avatar: comment.user.avatar,
+          url: comment.user.userid
+            ? `https://www.xiaohongshu.com/user/profile/${comment.user.userid}`
+            : undefined,
+        }
+      : undefined,
+    publishedAt: comment.create_time ? new Date(comment.create_time).toISOString() : undefined,
+    ipLocation: comment.ip_location,
+    metrics: {
+      likes: parseCount(comment.like_count),
+      replies: parseCount(comment.sub_comment_count),
+    },
+    subComments: (comment.sub_comments ?? []).map((sc) => commentToPayload(sc, noteId)),
   };
 }
 

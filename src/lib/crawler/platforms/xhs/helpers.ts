@@ -108,6 +108,27 @@ export const USER_NOTES_PATH = '/api/sns/web/v1/user/posted';
 export const NOTE_DETAIL_PATH = '/api/sns/web/v1/feed';
 export const NOTE_DETAIL_URL = `${BASE}${NOTE_DETAIL_PATH}`;
 
+// ── 评论接口 GET /api/sns/web/v1/comment/page ─────────────────────────────────
+
+export const COMMENT_PATH = '/api/sns/web/v1/comment/page';
+
+export interface CommentPageParams {
+  noteId: string;
+  cursor?: string;
+  pageSize?: number;
+}
+
+export function buildCommentUrl(params: CommentPageParams): string {
+  const u = new URL(`${BASE}${COMMENT_PATH}`);
+  u.searchParams.set('note_id', params.noteId);
+  u.searchParams.set('cursor', params.cursor ?? '');
+  u.searchParams.set('top_comment_id', '');
+  u.searchParams.set('image_formats', 'jpg,webp,avif');
+  u.searchParams.set('xsec_token', '');
+  u.searchParams.set('xsec_source', 'pc_feed');
+  return u.toString();
+}
+
 export function buildNoteDetailBody(noteId: string): string {
   return JSON.stringify({
     source_note_id: noteId,
