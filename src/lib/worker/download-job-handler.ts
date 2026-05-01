@@ -88,8 +88,13 @@ export async function handleDownloadJob(
       result = await downloadHttp(fetcherInput, getFileStorage(), { signal, onProgress });
     } else if (attachment.fetcherKind === 'yt-dlp') {
       // YouTube 等站点 host 级限并发为 1（合规 + 防风控）
+      // kind=audio 时走音频提取模式（-x --audio-format mp3）
       result = await withYoutubeHostLock(attachment.sourceUrl, () =>
-        downloadYtdlp(fetcherInput, getFileStorage(), { signal, onProgress }),
+        downloadYtdlp(
+          { ...fetcherInput, audioOnly: attachment.kind === 'audio' },
+          getFileStorage(),
+          { signal, onProgress },
+        ),
       );
     } else {
       throw new Error(`unsupported fetcherKind: ${attachment.fetcherKind}`);

@@ -24,6 +24,8 @@ export interface YtdlpFetcherInput {
   spider: string;
   itemId: number;
   sourceUrl: string; // YouTube watch URL（或其它 yt-dlp 支持的 URL）
+  /** true → 仅提取音频，输出 mp3；默认 false → 下载最佳画质视频 */
+  audioOnly?: boolean;
 }
 
 export interface YtdlpFetcherCtx {
@@ -77,18 +79,32 @@ export async function downloadYtdlp(
   // 临时目录
   const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), `hatch-ytdlp-${input.attachmentId}-`));
 
-  const args = [
-    '-f',
-    'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-    '--merge-output-format',
-    'mp4',
-    '--no-playlist',
-    '--no-warnings',
-    '--newline', // 进度按换行刷新（默认是 \r 同行覆盖），便于流式解析
-    '-o',
-    path.join(tmpDir, `${input.attachmentId}.%(ext)s`),
-    input.sourceUrl,
-  ];
+  const args = input.audioOnly
+    ? [
+        '-x', // 提取音频，丢弃视频流
+        '--audio-format',
+        'mp3',
+        '--audio-quality',
+        '0', // 最佳 VBR 质量
+        '--no-playlist',
+        '--no-warnings',
+        '--newline',
+        '-o',
+        path.join(tmpDir, `${input.attachmentId}.%(ext)s`),
+        input.sourceUrl,
+      ]
+    : [
+        '-f',
+        'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        '--merge-output-format',
+        'mp4',
+        '--no-playlist',
+        '--no-warnings',
+        '--newline', // 进度按换行刷新（默认是 \r 同行覆盖），便于流式解析
+        '-o',
+        path.join(tmpDir, `${input.attachmentId}.%(ext)s`),
+        input.sourceUrl,
+      ];
 
   // 进度节流：仅在 +1% 或 800ms 才回调（yt-dlp 自己刷新很快）
   let lastPct = -1;
@@ -170,7 +186,16 @@ export async function downloadYtdlp(
   ctx.onProgress(100, put.byteSize, put.byteSize);
 
   // mime 由扩展名映射
-  const mime = ext === 'mp4' ? 'video/mp4' : ext === 'webm' ? 'video/webm' : null;
+  const mime =
+    ext === 'mp4'
+      ? 'video/mp4'
+      : ext === 'webm'
+        ? 'video/webm'
+        : ext === 'mp3'
+          ? 'audio/mpeg'
+          : ext === 'm4a'
+            ? 'audio/mp4'
+            : null;
 
   return {
     storagePath,
