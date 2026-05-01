@@ -1,7 +1,8 @@
 'use client';
 import React, { use } from 'react';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import type { Run, Spider } from '@/lib/db';
 import { api } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -59,11 +60,33 @@ function fmtDuration(start: string | null, end: string | null): string {
 
 export default function SpiderDetailPage({ params }: { params: Promise<{ name: string }> }) {
   const { name } = use(params);
+  const queryClient = useQueryClient();
 
   const { data: spider, isLoading } = useQuery({
     queryKey: ['spider', name],
     queryFn: () => api.get<Spider>(`/api/spiders/${name}`),
   });
+
+  // 重置 visited：删除该 spider 在 visited 表的所有记录，
+  // 让下次 run 不再因为指纹命中被跳过。常用于 list/search 类 URL 被锁住的情形。
+  const resetVisitedMutation = useMutation({
+    mutationFn: () => api.delete<{ deleted: number }>(`/api/spiders/${name}/visited`),
+    onSuccess: ({ deleted }) => {
+      toast.success(`已重置 visited（删除 ${deleted} 条记录）`);
+      void queryClient.invalidateQueries({ queryKey: ['runs', 'spider', name] });
+    },
+    onError: (err) => toast.error(`重置失败：${String(err)}`),
+  });
+
+  const onResetVisited = () => {
+    if (
+      window.confirm(
+        `确定要清空 spider "${name}" 的所有 visited 记录吗？\n\n清空后，下次运行会重新抓取所有曾抓过的 URL（包括看似"已完成"的种子页）。\n\n仅在你怀疑 visited 表把 URL 锁住、导致后续 run 空跑时使用。`,
+      )
+    ) {
+      resetVisitedMutation.mutate();
+    }
+  };
 
   const { data: runsResult } = useQuery({
     queryKey: ['runs', 'spider', name],
@@ -105,9 +128,20 @@ export default function SpiderDetailPage({ params }: { params: Promise<{ name: s
           <h1 className="text-xl font-semibold">{spider.displayName}</h1>
           <p className="font-mono text-sm text-muted-foreground">{spider.name}</p>
         </div>
-        <Button size="sm" variant="outline" onClick={() => exportSpiderConfig(spider)}>
-          导出配置
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onResetVisited}
+            disabled={resetVisitedMutation.isPending}
+            title="清空该 spider 的 visited 记录，强制下次 run 重新抓取所有 URL"
+          >
+            {resetVisitedMutation.isPending ? '重置中…' : '重置 visited'}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => exportSpiderConfig(spider)}>
+            导出配置
+          </Button>
+        </div>
       </div>
 
       {/* ── 统计卡片 ── */}
