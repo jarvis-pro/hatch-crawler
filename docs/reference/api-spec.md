@@ -38,7 +38,7 @@
 
 ### 鉴权
 
-v1 不做。所有路由匿名可访问。
+当前不做。所有路由匿名可访问。
 
 ### 分页
 
@@ -322,12 +322,12 @@ data: {"status":"completed","stats":{...}}
 
 ```ts
 const es = new EventSource(`/sse/runs/${id}/logs`);
-es.addEventListener("log", (e) => append(JSON.parse(e.data)));
-es.addEventListener("stats", (e) => updateStats(JSON.parse(e.data)));
-es.addEventListener("done", () => es.close());
+es.addEventListener('log', (e) => append(JSON.parse(e.data)));
+es.addEventListener('stats', (e) => updateStats(JSON.parse(e.data)));
+es.addEventListener('done', () => es.close());
 ```
 
-**断线重连：** 浏览器自动重连。Server 端要支持 `Last-Event-ID` 头，把缺失的事件回放给客户端（v1 简化：不回放，只发新事件，客户端可在重连后重新拉一次 `/api/runs/:id/events`）。
+**断线重连：** 浏览器自动重连。Server 端要支持 `Last-Event-ID` 头，把缺失的事件回放给客户端（当前简化：不回放，只发新事件，客户端可在重连后重新拉一次 `/api/runs/:id/events`）。
 
 ---
 
@@ -343,7 +343,7 @@ es.addEventListener("done", () => es.close());
 
 ## 速率限制
 
-v1 不做。如果后续暴露到公网，建议：
+当前不做。如果后续暴露到公网，建议：
 
 - API 路由用 `next-rate-limit` 或 Edge Middleware
 - 同时给 SSE 端点加 IP 级别的并发上限（防 DDoS）

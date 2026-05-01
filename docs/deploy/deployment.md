@@ -1,6 +1,6 @@
 # 部署
 
-> v1 的部署形态是 Docker Compose 本地一键起。
+> 当前部署形态是 Docker Compose 本地一键起。
 > 干净机器上 `git clone && docker compose up` 就能用。
 
 ## 一行起
@@ -101,7 +101,7 @@ docker compose logs web
 
 ```yaml
 ports:
-  - "127.0.0.1:5433:5432" # 把 5432 改成 5433
+  - '127.0.0.1:5433:5432' # 把 5432 改成 5433
 ```
 
 ### 镜像构建失败：better-sqlite3 编译错
@@ -129,9 +129,9 @@ docker compose exec web ls -la /app/.next/static/css
 
 应该有几个 `.css` 文件。没有的话重新 `docker compose build web --no-cache`。
 
-## 生产化补强建议（v2）
+## 生产化补强建议
 
-当前 v1 的 Compose 配置满足"本地一键试用"，但暴露到公网前应该考虑：
+当前的 Compose 配置满足"本地一键试用"，但暴露到公网前应该考虑：
 
 - **认证**：在 `src/app` 上接 NextAuth
 - **HTTPS**：前置 Caddy / Traefik 自动签证书

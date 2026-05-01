@@ -1,24 +1,21 @@
 # 文档索引
 
-hatch-crawler v1 设计 / 运维文档。整体架构已落地为单仓 Next.js 应用（无 monorepo），
-所有源码集中在 `src/`，迁移、worker 与看板共用一个进程。
+hatch-crawler 设计 / 运维文档。整体架构已落地为单仓 Next.js 应用（无 monorepo），所有源码集中在 `src/`，迁移、worker 与看板共用一个进程。文档按"读者目的"分四类组织——
 
-| 文档                                       | 内容                                                  |
-| ------------------------------------------ | ----------------------------------------------------- |
-| [`architecture.md`](./architecture.md)     | 服务拓扑、模块职责、数据流、关键决策与"不做"清单      |
-| [`data-model.md`](./data-model.md)         | Postgres + Drizzle 的所有表定义、索引、迁移与保留策略 |
-| [`api-spec.md`](./api-spec.md)             | REST 端点 + SSE 通道，含请求/响应示例                 |
-| [`dashboard-spec.md`](./dashboard-spec.md) | 8 个页面的线框、组件清单、用户旅程                    |
-| [`roadmap.md`](./roadmap.md)               | 4 个 Phase 的拆解、文件清单与当前进度                 |
-| [`deployment.md`](./deployment.md)         | Docker Compose 一键起 + 排错指南                      |
+| 目录                                   | 给谁看                       | 包含什么                                                 |
+| -------------------------------------- | ---------------------------- | -------------------------------------------------------- |
+| [getting-started/](./getting-started/) | 第一次接触本项目的同学       | 架构总览 + 实施路线，看完拿到全貌                        |
+| [reference/](./reference/)             | 改 schema / API / 看板的同学 | 数据模型、API 契约、看板线框——源码注释指向的"事实来源"   |
+| [deploy/](./deploy/)                   | 把它跑起来的同学             | Docker Compose 一键起、关键环境变量、排错指南            |
+| [rfcs/](./rfcs/)                       | 做重大架构决策的同学         | 落地前写的提案（含状态字段），目前有 RFC 0001 多平台扩展 |
 
 ## 阅读顺序
 
 刚加入的同学：
 
-1. `architecture.md` — 先看到全貌
-2. `roadmap.md` — 知道当前进度（v1 已完成）和下一步
-3. 然后按需要查 `data-model.md` / `api-spec.md` / `dashboard-spec.md`
+1. [`getting-started/architecture.md`](./getting-started/architecture.md) — 先看到全貌
+2. [`getting-started/roadmap.md`](./getting-started/roadmap.md) — 知道当前进度（Phase 1-4 已完成）和下一步
+3. 然后按需要查 [`reference/`](./reference/) 下的具体规范
 
 ## 当前结构（一句话版）
 
@@ -30,7 +27,7 @@ src/
 └── instrumentation.ts   进程启动钩子（迁移 + worker）
 ```
 
-详细说明在 `architecture.md`。
+详细说明在 [`getting-started/architecture.md`](./getting-started/architecture.md)。
 
 ## 设计原则一览
 
@@ -44,4 +41,6 @@ src/
 
 ## 当前状态
 
-v1 范围内的 4 个 Phase 已全部交付，详见 [`roadmap.md`](./roadmap.md) 末尾的验收清单。
+Phase 1-4 已全部交付，详见 [`getting-started/roadmap.md`](./getting-started/roadmap.md) 末尾的当前验收清单。
+
+下一阶段正在提案中：把单平台 / 单资源类型扩展为支持多平台（YouTube / B 站 / 小红书 / 抖音 …）× 多资源类型（视频 / 音频 / 图片 / 文章 / 短贴 …）。提案文档为 [`rfcs/0001-multi-platform.md`](./rfcs/0001-multi-platform.md)，配套的数据模型与架构增量小节都标了"提案中、未实施"，落地路径在 [`getting-started/roadmap.md`](./getting-started/roadmap.md) 的 Phase 5 / 6 / 7。
