@@ -51,9 +51,16 @@ export async function handleCrawlJob(
       'apikey',
       env.accountsMasterKey,
     );
-    if (apiKey) {
-      spiderParams.apiKey = apiKey;
-    }
+    if (apiKey) spiderParams.apiKey = apiKey;
+
+    // 自动注入平台 Cookie（如有，用于 XHS 等 cookie 鉴权平台）
+    const cookie = await accountRepo.getActivePayload(
+      db,
+      entry.platform,
+      'cookie',
+      env.accountsMasterKey,
+    );
+    if (cookie) spiderParams.cookie = cookie;
   }
 
   // 桥接事件：写 events 表（异步）+ 推 EventBus（同步给 SSE）

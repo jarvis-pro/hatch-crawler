@@ -4,6 +4,8 @@ import { YoutubeChannelVideosSpider } from '@/lib/crawler/platforms/youtube/spid
 import { YoutubeSearchSpider } from '@/lib/crawler/platforms/youtube/spiders/search';
 import { BilibiliUserVideosSpider } from '@/lib/crawler/platforms/bilibili/spiders/user-videos';
 import { BilibiliSearchSpider } from '@/lib/crawler/platforms/bilibili/spiders/search';
+import { XhsSearchSpider } from '@/lib/crawler/platforms/xhs/spiders/search';
+import { XhsUserNotesSpider } from '@/lib/crawler/platforms/xhs/spiders/user-notes';
 
 /**
  * Spider 注册表：name → 入口描述。
@@ -43,6 +45,14 @@ export const SPIDER_REGISTRY: Record<string, SpiderEntry> = {
   'bilibili-search': {
     factory: (params) => new BilibiliSearchSpider(params),
     platform: 'bilibili',
+  },
+  'xhs-search': {
+    factory: (params) => new XhsSearchSpider(params),
+    platform: 'xhs',
+  },
+  'xhs-user-notes': {
+    factory: (params) => new XhsUserNotesSpider(params),
+    platform: 'xhs',
   },
 };
 
