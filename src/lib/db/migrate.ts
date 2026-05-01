@@ -16,20 +16,25 @@ import PgBoss from 'pg-boss';
  *  - scripts/db-migrate.ts 也调它（手动迁移用）
  */
 
-const BUSINESS_SCHEMA_SQL = `
--- ── 枚举 ──────────────────────────────────────────────────
-DO $$ BEGIN
+/**
+ * 各条 DDL 独立存放，逐条传给 $executeRawUnsafe。
+ * 原因：Prisma 的 $executeRawUnsafe 底层走 prepared statement，
+ * PostgreSQL 不允许在同一个 prepared statement 里放多条命令（code 42601）。
+ */
+const BUSINESS_SCHEMA_STMTS: string[] = [
+  // ── 枚举 ────────────────────────────────────────────────
+  `DO $$ BEGIN
   CREATE TYPE "run_status" AS ENUM ('queued', 'running', 'completed', 'failed', 'stopped');
 EXCEPTION WHEN duplicate_object THEN null;
-END $$;
+END $$`,
 
-DO $$ BEGIN
+  `DO $$ BEGIN
   CREATE TYPE "event_level" AS ENUM ('debug', 'info', 'warn', 'error');
 EXCEPTION WHEN duplicate_object THEN null;
-END $$;
+END $$`,
 
--- ── spiders ──────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS "spiders" (
+  // ── spiders ─────────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS "spiders" (
   "name" varchar(64) PRIMARY KEY,
   "display_name" varchar(128) NOT NULL,
   "description" text,
@@ -42,10 +47,10 @@ CREATE TABLE IF NOT EXISTS "spiders" (
   "cron_schedule" varchar(64),
   "created_at" timestamp NOT NULL DEFAULT now(),
   "updated_at" timestamp NOT NULL DEFAULT now()
-);
+)`,
 
--- ── runs ─────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS "runs" (
+  // ── runs ────────────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS "runs" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "spider_name" varchar(64) NOT NULL REFERENCES "spiders"("name") ON DELETE CASCADE,
   "status" "run_status" NOT NULL DEFAULT 'queued',
@@ -59,12 +64,12 @@ CREATE TABLE IF NOT EXISTS "runs" (
   "finished_at" timestamp,
   "error_message" text,
   "created_at" timestamp NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS "idx_runs_status" ON "runs" ("status");
-CREATE INDEX IF NOT EXISTS "idx_runs_spider" ON "runs" ("spider_name", "created_at");
+)`,
+  `CREATE INDEX IF NOT EXISTS "idx_runs_status" ON "runs" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "idx_runs_spider" ON "runs" ("spider_name", "created_at")`,
 
--- ── events ───────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS "events" (
+  // ── events ──────────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS "events" (
   "id" serial PRIMARY KEY,
   "run_id" uuid NOT NULL REFERENCES "runs"("id") ON DELETE CASCADE,
   "level" "event_level" NOT NULL,
@@ -72,11 +77,11 @@ CREATE TABLE IF NOT EXISTS "events" (
   "message" text,
   "payload" jsonb DEFAULT '{}'::jsonb,
   "occurred_at" timestamp NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS "idx_events_run_time" ON "events" ("run_id", "occurred_at");
+)`,
+  `CREATE INDEX IF NOT EXISTS "idx_events_run_time" ON "events" ("run_id", "occurred_at")`,
 
--- ── items ────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS "items" (
+  // ── items ───────────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS "items" (
   "id" serial PRIMARY KEY,
   "run_id" uuid REFERENCES "runs"("id") ON DELETE SET NULL,
   "spider" varchar(64) NOT NULL,
@@ -86,27 +91,27 @@ CREATE TABLE IF NOT EXISTS "items" (
   "content_hash" char(40) NOT NULL,
   "payload" jsonb NOT NULL,
   "fetched_at" timestamp NOT NULL DEFAULT now()
-);
-CREATE UNIQUE INDEX IF NOT EXISTS "uniq_items_spider_url_content" ON "items" ("spider", "url_hash", "content_hash");
-CREATE INDEX IF NOT EXISTS "idx_items_spider_type" ON "items" ("spider", "type");
-CREATE INDEX IF NOT EXISTS "idx_items_fetched_at" ON "items" ("fetched_at");
+)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "uniq_items_spider_url_content" ON "items" ("spider", "url_hash", "content_hash")`,
+  `CREATE INDEX IF NOT EXISTS "idx_items_spider_type" ON "items" ("spider", "type")`,
+  `CREATE INDEX IF NOT EXISTS "idx_items_fetched_at" ON "items" ("fetched_at")`,
 
--- ── visited ──────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS "visited" (
+  // ── visited ─────────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS "visited" (
   "spider" varchar(64) NOT NULL,
   "url_hash" char(40) NOT NULL,
   "url" text NOT NULL,
   "visited_at" timestamp NOT NULL DEFAULT now(),
   PRIMARY KEY ("spider", "url_hash")
-);
+)`,
 
--- ── settings ─────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS "settings" (
+  // ── settings ────────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS "settings" (
   "key" varchar(64) PRIMARY KEY,
   "value" jsonb NOT NULL,
   "updated_at" timestamp NOT NULL DEFAULT now()
-);
-`;
+)`,
+];
 
 export interface MigrateResult {
   businessTablesReady: boolean;
@@ -119,7 +124,9 @@ export async function runMigrations(databaseUrl: string): Promise<MigrateResult>
     datasources: { db: { url: databaseUrl } },
   });
   try {
-    await client.$executeRawUnsafe(BUSINESS_SCHEMA_SQL);
+    // 逐条执行，不能合并成一个字符串：Prisma 用 prepared statement，
+    // PostgreSQL 不允许单个 prepared statement 包含多条命令（error code 42601）。
+    await client.$transaction(BUSINESS_SCHEMA_STMTS.map((sql) => client.$executeRawUnsafe(sql)));
   } finally {
     await client.$disconnect();
   }
