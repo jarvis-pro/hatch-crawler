@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bug, Database, Download, LayoutDashboard, ListChecks, Settings } from 'lucide-react';
+import { Bug, Database, LayoutDashboard, ListChecks, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
@@ -9,7 +9,6 @@ const navItems = [
   { href: '/spiders', label: '爬虫', icon: Bug },
   { href: '/runs', label: '任务', icon: ListChecks },
   { href: '/items', label: '数据', icon: Database },
-  { href: '/attachments', label: '附件', icon: Download },
   { href: '/settings', label: '设置', icon: Settings },
 ];
 

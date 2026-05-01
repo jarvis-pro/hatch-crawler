@@ -9,7 +9,6 @@ const titleMap: Record<string, string> = {
   '/spiders': '爬虫',
   '/runs': '任务',
   '/items': '数据',
-  '/attachments': '附件',
   '/settings': '设置',
 };
 

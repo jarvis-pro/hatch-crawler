@@ -20,7 +20,6 @@ const createSchema = z.object({
   cronSchedule: z.string().nullish(),
   defaultParams: z.record(z.unknown()).default({}),
   platform: z.string().max(32).nullish(),
-  autoDownload: z.boolean().default(false),
 });
 
 export async function GET(): Promise<Response> {

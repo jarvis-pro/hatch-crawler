@@ -625,7 +625,7 @@ function DownloadsTab() {
             <div>
               <p className="text-sm font-medium">启用 YouTube 下载（yt-dlp）</p>
               <p className="text-xs text-muted-foreground">
-                关闭时，下载对话框不显示 yt-dlp 选项，spider autoDownload 也跳过 YouTube 类附件。
+                关闭时，视频/音频下载按钮不显示 yt-dlp 选项。
               </p>
             </div>
             <Button

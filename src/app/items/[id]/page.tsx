@@ -1,15 +1,13 @@
 'use client';
 import { use } from 'react';
 import Link from 'next/link';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
-import type { Attachment, Item } from '@/lib/db';
+import { useQuery } from '@tanstack/react-query';
+import type { Item } from '@/lib/db';
 import { api } from '@/lib/api-client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { JsonViewer } from '@/components/items/json-viewer';
-import { AttachmentsPanel } from '@/components/items/attachments-panel';
 
 // ── 样式映射 ──────────────────────────────────────────────────────────────────
 
@@ -69,11 +67,9 @@ function fmtDate(iso: unknown): string {
 
 /**
  * 视频详情右上角的一键下载按钮组。
- * 点击后直接把 item.url 以 yt-dlp 方式入队，无需填写对话框。
+ * 点击后直接触发浏览器下载，通过流式代理接口从源头抓取。
  */
 function VideoQuickDownload({ item }: { item: Item }) {
-  const queryClient = useQueryClient();
-
   // 检查 yt-dlp 是否可用（设置 + 系统 health）
   const { data: ytSetting } = useQuery({
     queryKey: ['setting', 'enable_youtube_download'],
@@ -86,40 +82,23 @@ function VideoQuickDownload({ item }: { item: Item }) {
   });
   const ytdlpAvailable = Boolean(ytSetting?.value) && Boolean(health?.ytdlp?.ok);
 
-  const enqueue = useMutation({
-    mutationFn: ({ kind }: { kind: 'video' | 'audio' }) =>
-      api.post<Attachment>(`/api/items/${item.id}/attachments`, {
-        url: item.url,
-        kind,
-        fetcherKind: 'yt-dlp',
-      }),
-    onSuccess: (_, { kind }) => {
-      toast.success(`已入队${kind === 'audio' ? '音频' : '视频'}下载，在下方附件区查看进度`);
-      void queryClient.invalidateQueries({ queryKey: ['item', item.id, 'attachments'] });
-    },
-    onError: (err) => toast.error(`入队失败：${String(err)}`),
-  });
-
   if (!ytdlpAvailable) return null;
+
+  const downloadUrl = (fetcher: 'ytdlp') =>
+    `/api/items/${String(item.id)}/download?url=${encodeURIComponent(item.url)}&fetcher=${fetcher}`;
 
   return (
     <div className="flex shrink-0 gap-1.5">
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={enqueue.isPending}
-        onClick={() => enqueue.mutate({ kind: 'video' })}
-      >
-        ↓ 视频
-      </Button>
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={enqueue.isPending}
-        onClick={() => enqueue.mutate({ kind: 'audio' })}
-      >
-        ↓ 音频
-      </Button>
+      <a href={downloadUrl('ytdlp')} download>
+        <Button size="sm" variant="outline">
+          ↓ 视频
+        </Button>
+      </a>
+      <a href={`${downloadUrl('ytdlp')}&audioOnly=1`} download>
+        <Button size="sm" variant="outline">
+          ↓ 音频
+        </Button>
+      </a>
     </div>
   );
 }
@@ -545,16 +524,6 @@ export default function ItemDetailPage({ params }: { params: Promise<{ id: strin
           </CardContent>
         </Card>
       )}
-
-      {/* RFC 0002 Phase A：附件下载 */}
-      <Card>
-        <CardHeader>
-          <CardTitle>附件</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <AttachmentsPanel itemId={data.id} />
-        </CardContent>
-      </Card>
     </div>
   );
 }
