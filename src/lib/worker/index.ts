@@ -1,5 +1,5 @@
 import 'server-only';
-import { getBoss, getDb, QUEUE_CRAWL, runRepo } from '@/lib/db';
+import { getBoss, getDb, QUEUE_CRAWL, runRepo, spiderRepo } from '@/lib/db';
 import type { CrawlJobData } from '@/lib/db';
 import { env } from '../env';
 import { handleCrawlJob } from './job-handler';
@@ -36,6 +36,45 @@ function getState(): WorkerState {
   return globalCache[CACHE_KEY]!;
 }
 
+/** cron 触发队列前缀；每个 spider 独占一条队列 */
+const QUEUE_CRON_PREFIX = 'crawl-cron:';
+
+/**
+ * 注册或更新单条 Spider 的 cron 调度。
+ * - cronExpression 为 null / 空串：取消调度
+ * - 幂等：重复调用安全
+ */
+export async function syncSpiderSchedule(
+  spiderName: string,
+  cronExpression: string | null,
+): Promise<void> {
+  const { boss, ready } = getBoss(env.databaseUrl);
+  await ready;
+  const db = getDb(env.databaseUrl);
+
+  const queueName = `${QUEUE_CRON_PREFIX}${spiderName}`;
+
+  if (!cronExpression) {
+    try {
+      await boss.unschedule(queueName);
+    } catch {
+      // 不存在也无妨
+    }
+    return;
+  }
+
+  await boss.createQueue(queueName);
+  await boss.schedule(queueName, cronExpression, { spider: spiderName });
+
+  // 保证有 work 处理器
+  await boss.work<{ spider: string }>(queueName, async ([job]) => {
+    if (!job) return;
+    const { spider } = job.data;
+    const run = await runRepo.create(db, { spiderName: spider, triggerType: 'cron' });
+    await boss.send(QUEUE_CRAWL, { runId: run.id, spider } satisfies CrawlJobData);
+  });
+}
+
 export async function startWorker(): Promise<void> {
   const state = getState();
   if (state.started) return;
@@ -66,11 +105,17 @@ export async function startWorker(): Promise<void> {
     }
   });
 
-  // 4) 监听 abort 请求（来自 POST /api/runs/:id/stop）
-  // 通过 EventBus 的特殊频道 "stop"
-  // 因 EventBus 已按 runId 索引，这里我们直接每个 runId 注册一个 listener
-  // —— 但 pg-boss 拉到 job 时才知道 runId。所以改用 globalThis 上的"abort 表"：
-  // 上层 stop 路由直接调 abortRun(runId) 即可，无需经 EventBus
+  // 4) 注册所有启用 Spider 的 cron 调度
+  const allSpiders = await spiderRepo.listAll(db);
+  for (const spider of allSpiders) {
+    if (spider.cronSchedule) {
+      await syncSpiderSchedule(spider.name, spider.cronSchedule).catch((err) => {
+        console.warn(`[worker] failed to register schedule for ${spider.name}:`, err);
+      });
+    }
+  }
+
+  // 5) 监听 abort 请求
   console.warn('[worker] started');
 }
 
