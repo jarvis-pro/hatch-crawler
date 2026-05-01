@@ -81,6 +81,20 @@ export async function getByName(db: Db, name: string): Promise<Spider | null> {
   return rows[0] ? shape(rows[0]) : null;
 }
 
+/**
+ * 按 type（注册表键）查找首条 spider 行。
+ *
+ * 用途：内置/单实例 spider（如 url-extractor）通过 type 反查 id，
+ * 避免在调用方写死 UUID。返回最早创建的一条（如果有重复）。
+ */
+export async function getByType(db: Db, type: string): Promise<Spider | null> {
+  const rows = await db.$queryRawUnsafe<RawRow[]>(
+    `SELECT ${SELECT_COLS} FROM "spiders" WHERE "type" = $1 ORDER BY "created_at" ASC LIMIT 1`,
+    type,
+  );
+  return rows[0] ? shape(rows[0]) : null;
+}
+
 export async function create(db: Db, input: NewSpider): Promise<Spider> {
   const rows = await db.$queryRawUnsafe<RawRow[]>(
     `INSERT INTO "spiders" (

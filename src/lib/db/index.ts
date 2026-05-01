@@ -17,6 +17,9 @@ export { getBoss, closeBoss, QUEUE_CRAWL, type CrawlJobData } from './boss';
 // 迁移
 export { runMigrations, type MigrateResult } from './migrate';
 
+// 内置 spider 注入（启动期幂等执行）
+export { ensureBuiltinSpiders } from './ensure-builtin-spiders';
+
 // repositories（按命名空间导出，避免方法名冲突）
 export * as runRepo from './repositories/runs';
 export * as itemRepo from './repositories/items';

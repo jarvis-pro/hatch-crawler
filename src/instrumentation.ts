@@ -10,7 +10,7 @@ export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
 
   // 动态 import：避免在 edge / build 时把这些 server-only 包拉进来
-  const { runMigrations } = await import('@/lib/db');
+  const { runMigrations, ensureBuiltinSpiders, getDb } = await import('@/lib/db');
   const { startWorker } = await import('./lib/worker');
 
   const databaseUrl = process.env.DATABASE_URL;
@@ -21,6 +21,12 @@ export async function register(): Promise<void> {
   console.warn('[instrumentation] running migrations...');
   await runMigrations(databaseUrl);
   console.warn('[instrumentation] migrations done');
+
+  // 在迁移之后、worker 启动之前 seed 内置 spider（如 url-extractor）。
+  // 幂等：已存在则跳过，不会覆盖用户手动修改过的字段。
+  console.warn('[instrumentation] ensuring builtin spiders...');
+  await ensureBuiltinSpiders(getDb(databaseUrl));
+  console.warn('[instrumentation] builtin spiders ready');
 
   await startWorker();
 }
