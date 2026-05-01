@@ -32,6 +32,7 @@ interface ListResult<T> {
 const PLATFORM_COLOR: Record<string, string> = {
   youtube: 'bg-red-400',
   bilibili: 'bg-blue-400',
+  xhs: 'bg-rose-400',
   'nextjs-blog': 'bg-slate-400',
   未知: 'bg-gray-300',
 };

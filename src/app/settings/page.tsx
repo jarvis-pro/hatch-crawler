@@ -274,7 +274,7 @@ function AddAccountForm({ onSuccess }: { onSuccess: () => void }) {
             >
               <option value="youtube">YouTube</option>
               <option value="bilibili">Bilibili</option>
-              <option value="xhs">小红书</option>
+              <option value="xhs">小红书 (XHS)</option>
             </select>
           </div>
           <div className="space-y-1">

@@ -13,6 +13,7 @@ import { JsonViewer } from '@/components/items/json-viewer';
 const PLATFORM_BADGE: Record<string, string> = {
   youtube: 'bg-red-100 text-red-800',
   bilibili: 'bg-blue-100 text-blue-800',
+  xhs: 'bg-rose-100 text-rose-800',
 };
 
 const KIND_BADGE: Record<string, string> = {
