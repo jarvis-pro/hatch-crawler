@@ -1,11 +1,12 @@
 import 'server-only';
-import { type Db, eventRepo, runRepo } from '@/lib/db';
+import { type Db, eventRepo, runRepo, accountRepo } from '@/lib/db';
 import { runSpider, setCrawlerConfig } from '@/lib/crawler';
 import type { CrawlerEvent, EventLevel } from '@/lib/shared';
 import type { CrawlJobData } from '@/lib/db';
-import { getSpiderFactory } from '../spider-registry';
+import { getSpiderEntry } from '../spider-registry';
 import { PostgresStorage } from './postgres-storage';
 import { publish } from './event-bus';
+import { env } from '@/lib/env';
 
 /**
  * 单个 crawl job 的处理函数。
@@ -26,8 +27,8 @@ export async function handleCrawlJob(
 ): Promise<void> {
   const { runId, spider, overrides } = data;
 
-  const factory = getSpiderFactory(spider);
-  if (!factory) {
+  const entry = getSpiderEntry(spider);
+  if (!entry) {
     await runRepo.markFinished(db, runId, 'failed', `unknown spider: ${spider}`);
     throw new Error(`unknown spider: ${spider}`);
   }
@@ -37,6 +38,22 @@ export async function handleCrawlJob(
   // 应用 overrides 到全局 crawler config
   if (overrides) {
     setCrawlerConfig(overrides);
+  }
+
+  // 组装 Spider 构造参数：overrides 中的值 + 平台凭据注入
+  const spiderParams: Record<string, unknown> = { ...(overrides ?? {}) };
+
+  if (entry.platform) {
+    // 自动注入平台 API key（如有）
+    const apiKey = await accountRepo.getActivePayload(
+      db,
+      entry.platform,
+      'apikey',
+      env.accountsMasterKey,
+    );
+    if (apiKey) {
+      spiderParams.apiKey = apiKey;
+    }
   }
 
   // 桥接事件：写 events 表（异步）+ 推 EventBus（同步给 SSE）
@@ -70,7 +87,7 @@ export async function handleCrawlJob(
   };
 
   try {
-    const spiderInstance = factory();
+    const spiderInstance = entry.factory(spiderParams);
     const storage = new PostgresStorage(db, runId);
     await runSpider(spiderInstance, { storage, onEvent, signal });
 
