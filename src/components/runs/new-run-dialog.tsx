@@ -29,8 +29,8 @@ export function NewRunDialog({ trigger }: { trigger: React.ReactNode }) {
   });
 
   const mutation = useMutation({
-    mutationFn: (spider: string) =>
-      api.post<{ id: string }>('/api/runs', { spider, overrides: {} }),
+    mutationFn: (spiderId: string) =>
+      api.post<{ id: string }>('/api/runs', { spiderId, overrides: {} }),
     onSuccess: ({ id }) => {
       toast.success('Run 已入队');
       setOpen(false);
@@ -54,21 +54,21 @@ export function NewRunDialog({ trigger }: { trigger: React.ReactNode }) {
         <div className="grid gap-2">
           {spiders?.map((s) => (
             <label
-              key={s.name}
+              key={s.id}
               className={`flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 ${
-                selected === s.name ? 'border-primary' : ''
+                selected === s.id ? 'border-primary' : ''
               }`}
             >
               <input
                 type="radio"
                 name="spider"
-                value={s.name}
+                value={s.id}
                 className="sr-only"
-                onChange={() => setSelected(s.name)}
+                onChange={() => setSelected(s.id)}
               />
               <div>
-                <div className="font-medium">{s.displayName}</div>
-                <div className="text-xs text-muted-foreground">{s.name}</div>
+                <div className="font-medium">{s.name}</div>
+                <div className="font-mono text-xs text-muted-foreground">{s.type}</div>
               </div>
               {!s.enabled && <span className="text-xs text-muted-foreground">已禁用</span>}
             </label>

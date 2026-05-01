@@ -22,24 +22,25 @@ if (!url) {
 const db = getDb(url);
 
 async function main(): Promise<void> {
-  const existing = await db.spider.findUnique({
-    where: { name: 'nextjs-blog' },
-  });
-  if (!existing) {
-    await db.spider.create({
-      data: {
-        name: 'nextjs-blog',
-        displayName: 'Next.js 官博',
-        description: '示例：抓取 https://nextjs.org/blog 文章',
-        startUrls: ['https://nextjs.org/blog'],
-        allowedHosts: ['nextjs.org'],
-        maxDepth: 2,
-        concurrency: 4,
-        perHostIntervalMs: 500,
-        enabled: true,
-        cronSchedule: null,
-      },
-    });
+  // seed 使用原始 SQL，兼容 Prisma generate 前 type 列不在生成类型里的情况
+  const existingRows = await db.$queryRawUnsafe<{ id: string }[]>(
+    `SELECT id FROM "spiders" WHERE "type" = 'nextjs-blog' LIMIT 1`,
+  );
+  if (existingRows.length === 0) {
+    await db.$executeRawUnsafe(
+      `INSERT INTO "spiders" ("name", "type", "display_name", "description", "start_urls", "allowed_hosts", "max_depth", "concurrency", "per_host_interval_ms", "enabled", "cron_schedule")
+       VALUES ($1, $2, $1, $3, $4::jsonb, $5::jsonb, $6, $7, $8, $9, $10)`,
+      'Next.js 官博',
+      'nextjs-blog',
+      '示例：抓取 https://nextjs.org/blog 文章',
+      JSON.stringify(['https://nextjs.org/blog']),
+      JSON.stringify(['nextjs.org']),
+      2,
+      4,
+      500,
+      true,
+      null,
+    );
   }
   console.log('✓ spider: nextjs-blog');
 
