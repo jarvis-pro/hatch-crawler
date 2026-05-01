@@ -1,61 +1,195 @@
 'use client';
 import { use } from 'react';
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import type { Spider } from '@/lib/db';
+import type { Run, Spider } from '@/lib/db';
 import { api } from '@/lib/api-client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { JsonViewer } from '@/components/items/json-viewer';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { RunStatusBadge } from '@/components/runs/run-status-badge';
+import { StatsCard } from '@/components/stats/stats-card';
+
+interface ListResult<T> {
+  data: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+function fmtDuration(start: string | null, end: string | null): string {
+  if (!start) return '—';
+  const ms = (end ? new Date(end) : new Date()).getTime() - new Date(start).getTime();
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
+  return `${Math.floor(ms / 60_000)}m${Math.round((ms % 60_000) / 1000)}s`;
+}
 
 export default function SpiderDetailPage({ params }: { params: Promise<{ name: string }> }) {
   const { name } = use(params);
-  const { data, isLoading } = useQuery({
+
+  const { data: spider, isLoading } = useQuery({
     queryKey: ['spider', name],
     queryFn: () => api.get<Spider>(`/api/spiders/${name}`),
   });
 
+  const { data: runsResult } = useQuery({
+    queryKey: ['runs', 'spider', name],
+    queryFn: () =>
+      api.get<ListResult<Run>>(`/api/runs?spider=${encodeURIComponent(name)}&pageSize=10`),
+    refetchInterval: 10_000,
+  });
+
+  const { data: allRunsResult } = useQuery({
+    queryKey: ['runs', 'spider', name, 'all'],
+    queryFn: () =>
+      api.get<ListResult<Run>>(`/api/runs?spider=${encodeURIComponent(name)}&pageSize=1000`),
+  });
+
+  const { data: itemsResult } = useQuery({
+    queryKey: ['items', 'spider', name, 'count'],
+    queryFn: () =>
+      api.get<ListResult<unknown>>(`/api/items?spider=${encodeURIComponent(name)}&pageSize=1`),
+  });
+
   if (isLoading) return <div>加载中…</div>;
-  if (!data) return <div>未找到 Spider：{name}</div>;
+  if (!spider) return <div>未找到 Spider：{name}</div>;
+
+  // ── 聚合统计 ──────────────────────────────────────────────────────────────
+  const allRuns = allRunsResult?.data ?? [];
+  const totalRuns = allRunsResult?.total ?? 0;
+  const completedRuns = allRuns.filter((r) => r.status === 'completed').length;
+  const successRate = totalRuns > 0 ? Math.round((completedRuns / totalRuns) * 100) : null;
+  const totalItems = itemsResult?.total ?? 0;
+  const totalNewItems = allRuns.reduce((s, r) => s + (r.newItems ?? 0), 0);
+
+  const recentRuns = runsResult?.data ?? [];
 
   return (
     <div className="space-y-6">
+      {/* ── 标题栏 ── */}
+      <div>
+        <h1 className="text-xl font-semibold">{spider.displayName}</h1>
+        <p className="font-mono text-sm text-muted-foreground">{spider.name}</p>
+      </div>
+
+      {/* ── 统计卡片 ── */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <StatsCard label="总运行次数" value={totalRuns} />
+        <StatsCard label="成功率" value={successRate !== null ? `${successRate}%` : '—'} />
+        <StatsCard label="累计抓取条目" value={totalItems} />
+        <StatsCard label="累计新增条目" value={totalNewItems} />
+      </div>
+
+      {/* ── 近期运行 ── */}
       <Card>
         <CardHeader>
-          <CardTitle>{data.displayName}</CardTitle>
+          <CardTitle className="flex items-center justify-between text-base">
+            近期运行
+            <Link
+              href={`/runs?spider=${encodeURIComponent(name)}`}
+              className="text-xs font-normal text-muted-foreground hover:underline"
+            >
+              查看全部 →
+            </Link>
+          </CardTitle>
         </CardHeader>
-        <CardContent>
-          <dl className="grid grid-cols-2 gap-3 text-sm">
-            <dt className="text-muted-foreground">name</dt>
-            <dd className="font-mono">{data.name}</dd>
-            <dt className="text-muted-foreground">startUrls</dt>
-            <dd>
-              <ul>
-                {data.startUrls.map((u) => (
-                  <li key={u} className="font-mono text-xs">
-                    {u}
-                  </li>
-                ))}
-              </ul>
-            </dd>
-            <dt className="text-muted-foreground">allowedHosts</dt>
-            <dd>{data.allowedHosts.join(', ') || '—'}</dd>
-            <dt className="text-muted-foreground">maxDepth</dt>
-            <dd>{data.maxDepth}</dd>
-            <dt className="text-muted-foreground">concurrency</dt>
-            <dd>{data.concurrency}</dd>
-            <dt className="text-muted-foreground">cronSchedule</dt>
-            <dd className="font-mono">{data.cronSchedule ?? '—'}</dd>
-            <dt className="text-muted-foreground">enabled</dt>
-            <dd>{data.enabled ? '✓' : '—'}</dd>
-          </dl>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>ID</TableHead>
+                <TableHead>状态</TableHead>
+                <TableHead>fetched / new / err</TableHead>
+                <TableHead>耗时</TableHead>
+                <TableHead>时间</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {recentRuns.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-muted-foreground">
+                    暂无运行记录
+                  </TableCell>
+                </TableRow>
+              )}
+              {recentRuns.map((r) => (
+                <TableRow key={r.id}>
+                  <TableCell className="font-mono text-xs">
+                    <Link href={`/runs/${r.id}`} className="hover:underline">
+                      {r.id.slice(0, 8)}
+                    </Link>
+                  </TableCell>
+                  <TableCell>
+                    <RunStatusBadge status={r.status} />
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {r.fetched} / {r.newItems} / {r.errors}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {fmtDuration(
+                      r.startedAt ? String(r.startedAt) : null,
+                      r.finishedAt ? String(r.finishedAt) : null,
+                    )}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {new Date(r.createdAt).toLocaleString()}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
 
+      {/* ── 配置详情 ── */}
       <Card>
         <CardHeader>
-          <CardTitle>原始数据</CardTitle>
+          <CardTitle className="text-base">配置</CardTitle>
         </CardHeader>
         <CardContent>
-          <JsonViewer data={data} />
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+            {[
+              ['平台', spider.platform ?? '—'],
+              ['maxDepth', String(spider.maxDepth ?? '—')],
+              ['concurrency', String(spider.concurrency ?? '—')],
+              [
+                'perHostIntervalMs',
+                spider.perHostIntervalMs ? `${spider.perHostIntervalMs}ms` : '—',
+              ],
+              ['cronSchedule', spider.cronSchedule ?? '—'],
+              ['enabled', spider.enabled ? '✓ 启用' : '— 禁用'],
+            ].map(([label, val]) => (
+              <>
+                <dt key={`dt-${label}`} className="text-muted-foreground">
+                  {label}
+                </dt>
+                <dd key={`dd-${label}`} className="font-mono">
+                  {val}
+                </dd>
+              </>
+            ))}
+            {spider.startUrls.length > 0 && (
+              <>
+                <dt className="text-muted-foreground">startUrls</dt>
+                <dd>
+                  <ul className="space-y-0.5">
+                    {spider.startUrls.map((u) => (
+                      <li key={u} className="truncate font-mono text-xs">
+                        {u}
+                      </li>
+                    ))}
+                  </ul>
+                </dd>
+              </>
+            )}
+          </dl>
         </CardContent>
       </Card>
     </div>
