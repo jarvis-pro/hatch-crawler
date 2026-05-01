@@ -5,7 +5,6 @@ import { UrlQueue, type QueueItem } from './queue';
 import type { CrawlItem, Storage } from '../storage/storage';
 import { getCrawlerConfig } from '../config/index';
 import { logger } from '../utils/logger';
-import { urlFingerprint } from '../utils/url';
 
 export interface SpiderContext {
   url: string;
@@ -90,18 +89,6 @@ export async function runSpider(spider: BaseSpider, opts: RunOptions): Promise<R
 
   const handleJob = async (job: QueueItem): Promise<void> => {
     if (opts.signal?.aborted) return;
-
-    const fp = urlFingerprint(job.url);
-    if (await opts.storage.isVisited(spider.name, fp)) {
-      emit({
-        type: 'skipped',
-        level: 'debug',
-        url: job.url,
-        reason: 'visited',
-        at: Date.now(),
-      });
-      return;
-    }
 
     const fetchStart = Date.now();
     try {
@@ -203,7 +190,6 @@ export async function runSpider(spider: BaseSpider, opts: RunOptions): Promise<R
       };
 
       await spider.parse(ctx);
-      await opts.storage.markVisited(spider.name, job.url, fp);
     } catch (err) {
       stats.errors += 1;
       logger.error({ url: job.url, err: (err as Error).message }, 'job failed');

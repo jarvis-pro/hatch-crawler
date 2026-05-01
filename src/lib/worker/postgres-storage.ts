@@ -1,6 +1,5 @@
 import 'server-only';
-import { createHash } from 'node:crypto';
-import { type Db, itemRepo, visitedRepo } from '@/lib/db';
+import { type Db, itemRepo } from '@/lib/db';
 import type { CrawlItem, SaveItemResult, Storage } from '@/lib/crawler';
 import { logger } from '@/lib/crawler';
 import { KIND_SCHEMAS, KNOWN_KINDS } from '@/lib/crawler/kinds';
@@ -45,25 +44,5 @@ export class PostgresStorage implements Storage {
       kind: item.kind ?? null,
       sourceId: item.sourceId ?? null,
     });
-  }
-
-  isVisited(spider: string, urlHash: string): Promise<boolean> {
-    return visitedRepo.isVisited(this.db, spider, urlHash);
-  }
-
-  async markVisited(spider: string, url: string, urlHash: string): Promise<void> {
-    await visitedRepo.mark(this.db, spider, url, urlHash);
-  }
-}
-
-/** 计算 URL 指纹，与 packages/crawler 的 urlFingerprint 等价 */
-export function urlFingerprint(url: string): string {
-  try {
-    const u = new URL(url);
-    u.hash = '';
-    u.searchParams.sort();
-    return createHash('sha1').update(u.toString()).digest('hex');
-  } catch {
-    return createHash('sha1').update(url).digest('hex');
   }
 }

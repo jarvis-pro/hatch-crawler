@@ -14,8 +14,6 @@ import type { CrawlItem, SaveItemResult, Storage } from './storage';
 export class SqliteStorage implements Storage {
   private readonly db: Database.Database;
   private readonly insertItem: Database.Statement;
-  private readonly markVisitedStmt: Database.Statement;
-  private readonly hasVisitedStmt: Database.Statement;
 
   constructor(path: string) {
     mkdirSync(dirname(path), { recursive: true });
@@ -37,29 +35,12 @@ export class SqliteStorage implements Storage {
       );
       CREATE INDEX IF NOT EXISTS idx_items_spider_type ON items(spider, type);
       CREATE INDEX IF NOT EXISTS idx_items_fetched_at  ON items(fetched_at);
-
-      CREATE TABLE IF NOT EXISTS visited (
-        spider     TEXT NOT NULL,
-        url_hash   TEXT NOT NULL,
-        url        TEXT NOT NULL,
-        visited_at INTEGER NOT NULL,
-        PRIMARY KEY (spider, url_hash)
-      );
     `);
 
     this.insertItem = this.db.prepare(`
       INSERT OR IGNORE INTO items
         (spider, type, url, url_hash, content_hash, payload, fetched_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    this.markVisitedStmt = this.db.prepare(`
-      INSERT OR REPLACE INTO visited (spider, url_hash, url, visited_at)
-      VALUES (?, ?, ?, ?)
-    `);
-
-    this.hasVisitedStmt = this.db.prepare(`
-      SELECT 1 AS x FROM visited WHERE spider = ? AND url_hash = ?
     `);
 
     logger.info({ path }, 'sqlite storage ready');
@@ -80,14 +61,6 @@ export class SqliteStorage implements Storage {
       fetchedAt,
     );
     return { isNew: info.changes > 0 };
-  }
-
-  async isVisited(spider: string, urlHash: string): Promise<boolean> {
-    return this.hasVisitedStmt.get(spider, urlHash) !== undefined;
-  }
-
-  async markVisited(spider: string, url: string, urlHash: string): Promise<void> {
-    this.markVisitedStmt.run(spider, urlHash, url, Date.now());
   }
 
   async close(): Promise<void> {

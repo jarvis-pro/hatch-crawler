@@ -46,7 +46,7 @@ export type CrawlerEvent =
       type: 'skipped';
       level: EventLevel;
       url: string;
-      reason: 'visited' | 'non_2xx' | 'depth';
+      reason: 'non_2xx' | 'depth';
       at: number;
     }
   | {

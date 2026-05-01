@@ -152,20 +152,6 @@ model Item {
 }
 
 // ──────────────────────────────────────────────────────────
-// visited —— URL 指纹去重表（跨 Run 共享）
-// ──────────────────────────────────────────────────────────
-
-model Visited {
-  spider    String   @db.VarChar(64)
-  urlHash   String   @map("url_hash") @db.Char(40)
-  url       String
-  visitedAt DateTime @default(now()) @map("visited_at") @db.Timestamp(6)
-
-  @@id([spider, urlHash])
-  @@map("visited")
-}
-
-// ──────────────────────────────────────────────────────────
 // accounts —— 平台凭据（Phase 6）
 // ──────────────────────────────────────────────────────────
 

@@ -8,7 +8,6 @@ import type {
   Run as PrismaRun,
   Setting as PrismaSetting,
   Spider as PrismaSpider,
-  Visited as PrismaVisited,
 } from '@prisma/client';
 
 // 客户端
@@ -23,7 +22,6 @@ export * as runRepo from './repositories/runs';
 export * as itemRepo from './repositories/items';
 export * as eventRepo from './repositories/events';
 export * as settingRepo from './repositories/settings';
-export * as visitedRepo from './repositories/visited';
 export * as spiderRepo from './repositories/spiders';
 export * as accountRepo from './repositories/accounts';
 
@@ -76,7 +74,6 @@ export type Item = Omit<PrismaItem, 'payload'> & {
   sourceId: string | null;
 };
 
-export type Visited = PrismaVisited;
 export type Setting = PrismaSetting;
 
 // repository create-input 速记

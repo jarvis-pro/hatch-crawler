@@ -96,15 +96,6 @@ END $$`,
   `CREATE INDEX IF NOT EXISTS "idx_items_spider_type" ON "items" ("spider", "type")`,
   `CREATE INDEX IF NOT EXISTS "idx_items_fetched_at" ON "items" ("fetched_at")`,
 
-  // ── visited ─────────────────────────────────────────────
-  `CREATE TABLE IF NOT EXISTS "visited" (
-  "spider" varchar(64) NOT NULL,
-  "url_hash" char(40) NOT NULL,
-  "url" text NOT NULL,
-  "visited_at" timestamp NOT NULL DEFAULT now(),
-  PRIMARY KEY ("spider", "url_hash")
-)`,
-
   // ── settings ────────────────────────────────────────────
   `CREATE TABLE IF NOT EXISTS "settings" (
   "key" varchar(64) PRIMARY KEY,

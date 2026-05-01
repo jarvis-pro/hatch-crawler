@@ -34,12 +34,6 @@ export interface Storage {
   /** 持久化一条抓取结果 */
   saveItem(item: CrawlItem): Promise<SaveItemResult>;
 
-  /** 这个 spider 是否抓过这个 URL（指纹命中） */
-  isVisited(spider: string, urlHash: string): Promise<boolean>;
-
-  /** 标记某个 URL 已抓过 */
-  markVisited(spider: string, url: string, urlHash: string): Promise<void>;
-
   /** 释放底层资源（连接、文件句柄等） */
   close?(): Promise<void> | void;
 }
