@@ -28,5 +28,8 @@ data/
 .pnpm-store/
 .pnpm-debug.log
 
+# pnpm 探测硬链接支持时产生的临时文件
+_tmp_*
+
 # Claude Code 本地配置（仅个人偏好，不入版本控制）
 .claude/settings.local.json
