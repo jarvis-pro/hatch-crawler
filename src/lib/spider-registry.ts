@@ -13,6 +13,7 @@ import { WeiboSearchSpider } from '@/lib/crawler/platforms/weibo/spiders/search'
 import { WeiboUserPostsSpider } from '@/lib/crawler/platforms/weibo/spiders/user-posts';
 import { DouyinSearchSpider } from '@/lib/crawler/platforms/douyin/spiders/search';
 import { DouyinUserVideosSpider } from '@/lib/crawler/platforms/douyin/spiders/user-videos';
+import { UrlExtractorSpider } from '@/lib/crawler/spiders/url-extractor';
 
 /**
  * Spider 注册表：name → 入口描述。
@@ -23,14 +24,23 @@ import { DouyinUserVideosSpider } from '@/lib/crawler/platforms/douyin/spiders/u
  * platform 字段标记该 Spider 所属平台；
  * job-handler 会自动从 accounts 表查询对应平台的活跃凭据，
  * 以 `apiKey` / `cookie` 等 key 注入到 params 中。
+ *
+ * excludeFromAutoDisable 字段：标记某些"用户输入驱动"的 spider，
+ * 让 worker 跳过 consecutive_failures 累加 / 自动停用逻辑。
+ * 例：url-extractor 的失败多源于用户粘贴失效链接，不应让整个功能被关闭。
  */
 
 type SpiderFactory = (params?: Record<string, unknown>) => BaseSpider;
 
-interface SpiderEntry {
+export interface SpiderEntry {
   factory: SpiderFactory;
   /** 平台 ID（与 accounts.platform、items.platform 一致），用于自动注入凭据 */
   platform?: string;
+  /**
+   * 是否豁免连续失败自动停用机制。
+   * worker 命中此标记时不会调 spiderRepo.recordFailure / resetFailures。
+   */
+  excludeFromAutoDisable?: boolean;
 }
 
 export const SPIDER_REGISTRY: Record<string, SpiderEntry> = {
@@ -85,6 +95,11 @@ export const SPIDER_REGISTRY: Record<string, SpiderEntry> = {
   'douyin-user-videos': {
     factory: (params) => new DouyinUserVideosSpider(params),
     platform: 'douyin',
+  },
+  'url-extractor': {
+    factory: (params) => new UrlExtractorSpider(params),
+    // 不绑定单一平台——它按 URL 分发到对应 extractor
+    excludeFromAutoDisable: true,
   },
 };
 

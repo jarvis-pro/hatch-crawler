@@ -3,7 +3,7 @@ import { type Db, eventRepo, runRepo, accountRepo, settingRepo, spiderRepo } fro
 import { runSpider, setCrawlerConfig } from '@/lib/crawler';
 import type { CrawlerEvent, EventLevel } from '@/lib/shared';
 import type { CrawlJobData } from '@/lib/db';
-import { getSpiderEntry } from '../spider-registry';
+import { getSpiderEntry, listSpiderNames } from '../spider-registry';
 import { PostgresStorage } from './postgres-storage';
 import { publish } from './event-bus';
 import { env } from '@/lib/env';
@@ -33,13 +33,13 @@ export async function handleCrawlJob(
 
   const entry = getSpiderEntry(registryKey);
   if (!entry) {
-    await runRepo.markFinished(
-      db,
-      runId,
-      'failed',
-      `unknown spider type: ${registryKey} (spiderId: ${spiderId})`,
-    );
-    throw new Error(`unknown spider type: ${registryKey} (spiderId: ${spiderId})`);
+    // 把当前注册表里的 keys 一并打出来，便于区分两种根因：
+    //  a) 真没注册（代码漏了）
+    //  b) worker 持有旧版注册表（dev HMR 后没重启进程，常见）
+    const known = listSpiderNames().sort().join(', ');
+    const detail = `unknown spider type: ${registryKey} (spiderId: ${spiderId}); known types: [${known}]`;
+    await runRepo.markFinished(db, runId, 'failed', detail);
+    throw new Error(detail);
   }
 
   await runRepo.markStarted(db, runId);
@@ -142,35 +142,42 @@ export async function handleCrawlJob(
     const finalStatus = signal.aborted ? 'stopped' : 'completed';
     await runRepo.markFinished(db, runId, finalStatus);
 
-    // 成功时重置连续失败计数
-    void spiderRepo.resetFailures(db, spiderId).catch(() => {});
+    // 成功时重置连续失败计数（豁免类 spider 跳过——例如 url-extractor）
+    if (!entry.excludeFromAutoDisable) {
+      void spiderRepo.resetFailures(db, spiderId).catch(() => {});
+    }
     void notifyWebhook(db, runId, registryKey, finalStatus).catch(() => {});
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await runRepo.markFinished(db, runId, 'failed', message);
 
-    // 递增连续失败计数，超阈值自动停用并发送告警
-    const failureResult = await spiderRepo
-      .recordFailure(db, spiderId, maxConsecutiveFailures)
-      .catch(() => null);
+    // 豁免类 spider（例如 url-extractor）：失败不计入连续失败、不触发自动停用、
+    // 也不连带 ban 账号——失败多源于用户输入而非 spider 逻辑/凭据问题。
+    if (!entry.excludeFromAutoDisable) {
+      // 递增连续失败计数，超阈值自动停用并发送告警
+      const failureResult = await spiderRepo
+        .recordFailure(db, spiderId, maxConsecutiveFailures)
+        .catch(() => null);
+
+      if (failureResult?.disabled) {
+        // 额外推送"停用告警"webhook
+        void notifyWebhook(
+          db,
+          runId,
+          registryKey,
+          'auto_disabled',
+          `连续失败 ${failureResult.consecutiveFailures} 次，已自动停用`,
+        ).catch(() => {});
+      }
+
+      // 将失败记录到本次使用的账号（触发 failureCount 递增，超阈值自动 ban）
+      for (const accountId of usedAccountIds) {
+        void accountRepo.recordFailure(db, accountId).catch(() => {});
+      }
+    }
 
     void notifyWebhook(db, runId, registryKey, 'failed', message).catch(() => {});
 
-    if (failureResult?.disabled) {
-      // 额外推送"停用告警"webhook
-      void notifyWebhook(
-        db,
-        runId,
-        registryKey,
-        'auto_disabled',
-        `连续失败 ${failureResult.consecutiveFailures} 次，已自动停用`,
-      ).catch(() => {});
-    }
-
-    // 将失败记录到本次使用的账号（触发 failureCount 递增，超阈值自动 ban）
-    for (const accountId of usedAccountIds) {
-      void accountRepo.recordFailure(db, accountId).catch(() => {});
-    }
     throw err;
   }
 }
