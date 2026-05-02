@@ -34,12 +34,15 @@ http://localhost:3000
 
 `.env` 字段（来自合并后的 `.env.example`，docker compose 只挑下面这几个用）：
 
-| 变量                | 默认值  | 说明             |
-| ------------------- | ------- | ---------------- |
-| `POSTGRES_DB`       | `hatch` | 库名             |
-| `POSTGRES_USER`     | `hatch` | 账户             |
-| `POSTGRES_PASSWORD` | `hatch` | 密码（生产请改） |
-| `LOG_LEVEL`         | `info`  | pino 日志级别    |
+| 变量                  | 默认值                 | 说明                                                            |
+| --------------------- | ---------------------- | --------------------------------------------------------------- |
+| `POSTGRES_DB`         | `hatch`                | 库名                                                            |
+| `POSTGRES_USER`       | `hatch`                | 账户                                                            |
+| `POSTGRES_PASSWORD`   | `hatch`                | 密码（生产请改）                                                |
+| `LOG_LEVEL`           | `info`                 | pino 日志级别                                                   |
+| `ACCOUNTS_MASTER_KEY` | 全零（不安全，仅 dev） | 凭据 AES-256-GCM 主密钥；hex 64 字符（32 字节）。**生产必须改** |
+| `STORAGE_BACKEND`     | `local`                | 仅占位；目前只支持 `local`                                      |
+| `STORAGE_LOCAL_ROOT`  | `./data`               | 本地文件根（保留接口）                                          |
 
 > `.env` 里的 `DATABASE_URL` 是给"本地直接 `pnpm dev`"用的；
 > docker compose 不消费它，会在 web 容器内用上面三个 `POSTGRES_*` 重新拼出 host=postgres 的连接串。
@@ -55,11 +58,22 @@ http://localhost:3000
 
 1. `postgres` 健康检查通过（`pg_isready`）
 2. `web` 启动：
-   - `src/instrumentation.ts` 在 Node runtime 触发 → `runMigrations()` 建业务表 + 启用 pgboss schema
-   - `startWorker()` 拉起 pg-boss 消费 `crawl` 队列、清理 stale runs
+   - `src/instrumentation.ts` 在 Node runtime 触发：
+     - `runMigrations()` 建业务表 + 启用 pgboss schema
+     - `ensureBuiltinSpiders()` 把内置 `url-extractor` spider 写入 `spiders` 表（已存在则跳过）
+     - `startWorker()` 拉起 pg-boss 消费 `crawl` 队列、清理 stale runs（>30 分钟未更新的 running run 标 failed）+ 注册启用 spider 的 cron 调度
 3. Next.js 监听 `:3000`（`HOSTNAME=0.0.0.0`，由 standalone 启动 `node server.js`）
 
 整个过程**幂等**：重启 `web` 不会破坏数据，迁移会跳过已有表。
+
+## 镜像内置依赖
+
+Dockerfile `runner` 阶段额外安装：
+
+- `ffmpeg`：视频/音频流处理（保留以备将来转码用）
+- `yt-dlp`：视频详情页"下载"菜单走 yt-dlp 通道时调用，以及 `/api/items/:id/formats` 实时探测格式
+
+本地 dev 用 `brew install ffmpeg yt-dlp`（macOS）或 `apt install ffmpeg && pip install yt-dlp`（Linux）。看板顶部 banner 会按 `/api/system/health` 检测结果提示缺失。
 
 ## 数据持久化
 
@@ -138,10 +152,10 @@ docker compose exec web ls -la /app/.next/static/css
 
 - **认证**：在 `src/app` 上接 NextAuth
 - **HTTPS**：前置 Caddy / Traefik 自动签证书
-- **Postgres 密码**：用 Docker secrets，而不是 `.env`
+- **Postgres 密码 + ACCOUNTS_MASTER_KEY**：用 Docker secrets，而不是 `.env`
 - **资源限制**：`deploy.resources.limits` 限 CPU/内存
 - **日志归集**：把 web 的 stdout 接 loki / 阿里云 SLS
-- **备份**：定期 `pg_dump` 到对象存储
+- **备份**：定期 `pg_dump` 到对象存储（凭据加密 payload 也在其中，丢了主密钥就解不出来——主密钥单独备份到密钥库）
 
 ## 仅本地 dev（不用 Docker 跑 web）
 
