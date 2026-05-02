@@ -1,11 +1,21 @@
 # RFC 0001 — 多平台 / 多资源类型扩展
 
-| 状态     | **Draft** (2026-05-01)                                                                                                                                                                                                                        |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 作者     | hatch-crawler core                                                                                                                                                                                                                            |
-| 创建于   | 2026-05-01                                                                                                                                                                                                                                    |
-| 影响范围 | **破坏性**：业务 schema 增列、Spider 接口拆分；需要数据迁移                                                                                                                                                                                   |
-| 关联     | [`getting-started/architecture.md`](../getting-started/architecture.md) §"下一阶段提案" · [`getting-started/roadmap.md`](../getting-started/roadmap.md) Phase 5/6/7 · [`reference/data-model.md`](../reference/data-model.md) §"下一阶段提案" |
+| 状态     | **Partially Implemented** (2026-05-01)                                                                                                                                                            |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 作者     | hatch-crawler core                                                                                                                                                                                |
+| 创建于   | 2026-05-01                                                                                                                                                                                        |
+| 影响范围 | 业务 schema 增列、Spider 接口拆分；需要数据迁移（已落地）                                                                                                                                         |
+| 关联     | [`getting-started/architecture.md`](../getting-started/architecture.md) · [`getting-started/roadmap.md`](../getting-started/roadmap.md) · [`reference/data-model.md`](../reference/data-model.md) |
+
+## 落地状态（2026-05-01）
+
+- ✅ items 表 `platform` / `kind` / `source_id` 三列与部分唯一索引已上线
+- ✅ `src/lib/crawler/kinds/` 5 个 Zod schema（article / video / audio / image / post）
+- ✅ `src/lib/crawler/platforms/<p>/spiders/*` 5 个平台共 14 个 Spider
+- ✅ accounts 表 + AES-256-GCM 加密 + 自动 ban / unban
+- ⏳ 4 层抽象（Platform 配置对象 + auth/sign/fetcher 配置驱动）尚未抽出，目前各平台自己实现 helpers + parsers，没有统一接口
+
+下面是当时的提案原文，记录权衡过程。
 
 ---
 

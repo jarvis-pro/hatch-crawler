@@ -1,11 +1,28 @@
 # RFC 0002 — 媒体下载与转码（含 YouTube）
 
-| 状态     | **Draft** (2026-05-01)                                                                                                                                                                                                                               |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 作者     | hatch-crawler core                                                                                                                                                                                                                                   |
-| 创建于   | 2026-05-01                                                                                                                                                                                                                                           |
-| 影响范围 | **加性**：新增 1 张表、2 条 pg-boss 队列、若干 API 与看板 UI；**新增系统依赖** `ffmpeg` 与 `yt-dlp`；既有 spider/worker 接口不破坏                                                                                                                   |
-| 关联     | [RFC 0001 §"四层抽象 → Storage"](./0001-multi-platform.md) · [`getting-started/architecture.md`](../getting-started/architecture.md) · [`reference/data-model.md`](../reference/data-model.md) · [`reference/api-spec.md`](../reference/api-spec.md) |
+| 状态     | **Withdrawn** (2026-05-01)                                                                                                                                     |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 作者     | hatch-crawler core                                                                                                                                             |
+| 创建于   | 2026-05-01                                                                                                                                                     |
+| 影响范围 | 落地后被回退；attachments 表、download/transcode 队列、转码 worker、自动派发逻辑全部移除                                                                       |
+| 关联     | [`getting-started/roadmap.md`](../getting-started/roadmap.md) · [`getting-started/architecture.md`](../getting-started/architecture.md) §"`src/lib/downloads`" |
+
+## 撤回原因（2026-05-01）
+
+落地后实测对单用户场景过于重：
+
+- 离线媒体仓库带来磁盘配额、GC、失败重试、转码进度等一整套维护负担
+- 多数使用场景下用户只想"挑一两个视频另存为"，"全自动落盘"反而增加心智负担
+- 看板已支持"在 item 详情页点击下载 → 后端按需 spawn → 流式回浏览器"，对单用户已经够用
+
+撤回后保留：
+
+- 系统依赖检测（`/api/system/health`，看板顶部 banner）
+- `src/lib/downloads/{http-fetcher,ytdlp-fetcher,system-deps}.ts` 工具实现
+- 当前的下载入口：`GET /api/items/:id/download`（http / yt-dlp）+ `POST /api/items/:id/formats`（yt-dlp 探测格式）
+- Dockerfile 内置 `ffmpeg + yt-dlp`
+
+下面保留原提案，作为历史参考与"未来需要正式离线仓库时再启动"的基线。
 
 ---
 
