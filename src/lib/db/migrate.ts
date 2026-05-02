@@ -296,6 +296,43 @@ END $$`,
   )`,
   `CREATE INDEX IF NOT EXISTS "idx_webhook_deliveries_status" ON "webhook_deliveries" ("status")`,
   `CREATE INDEX IF NOT EXISTS "idx_webhook_deliveries_created_at" ON "webhook_deliveries" ("created_at")`,
+
+  // ── extract_jobs：快取（按链接抓取）独立任务表 ───────────────────────────────
+  // 与 runs 解耦：extract 链路不再借用 spider/run/event 体系，自带任务壳与状态字段。
+  // results jsonb 形态：
+  //   { [canonicalUrl]: { originalUrl, platform, status: 'pending'|'succeeded'|'failed',
+  //                        errorCode?, errorMessage?, itemId?, finishedAt? } }
+  `CREATE TABLE IF NOT EXISTS "extract_jobs" (
+    "id"              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    "submitted_urls"  jsonb       NOT NULL DEFAULT '[]'::jsonb,
+    "results"         jsonb       NOT NULL DEFAULT '{}'::jsonb,
+    "total"           integer     NOT NULL DEFAULT 0,
+    "succeeded"       integer     NOT NULL DEFAULT 0,
+    "failed"          integer     NOT NULL DEFAULT 0,
+    "status"          varchar(16) NOT NULL DEFAULT 'running',
+    "created_at"      timestamp   NOT NULL DEFAULT now(),
+    "finished_at"     timestamp
+  )`,
+  `CREATE INDEX IF NOT EXISTS "idx_extract_jobs_created_at" ON "extract_jobs" ("created_at")`,
+  `CREATE INDEX IF NOT EXISTS "idx_extract_jobs_status" ON "extract_jobs" ("status")`,
+
+  // items 加 extract_job_id 列 + FK + 索引（幂等）
+  `ALTER TABLE "items" ADD COLUMN IF NOT EXISTS "extract_job_id" uuid`,
+  `DO $$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint
+      WHERE conname = 'items_extract_job_id_fkey'
+        AND conrelid = 'items'::regclass
+    ) THEN
+      ALTER TABLE "items" ADD CONSTRAINT "items_extract_job_id_fkey"
+        FOREIGN KEY ("extract_job_id") REFERENCES "extract_jobs"("id") ON DELETE SET NULL;
+    END IF;
+  END $$`,
+  `CREATE INDEX IF NOT EXISTS "idx_items_extract_job_id" ON "items" ("extract_job_id") WHERE "extract_job_id" IS NOT NULL`,
+
+  // ── url-extractor 内置 spider 下线：删除遗留 spider 行（关联 runs 级联清理；
+  //    items.run_id 由 ON DELETE SET NULL 保留）。幂等：已无对应行时 0 删除。
+  `DELETE FROM "spiders" WHERE "type" = 'url-extractor'`,
 ];
 
 export interface MigrateResult {

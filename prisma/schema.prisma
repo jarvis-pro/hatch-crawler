@@ -134,24 +134,28 @@ model Event {
 // ──────────────────────────────────────────────────────────
 
 model Item {
-  id          Int      @id @default(autoincrement())
-  runId       String?  @map("run_id") @db.Uuid
-  spider      String   @db.VarChar(64)
-  type        String   @db.VarChar(32)
-  url         String
-  urlHash     String   @map("url_hash") @db.Char(40)
-  contentHash String   @map("content_hash") @db.Char(40)
-  payload     Json
-  fetchedAt   DateTime @default(now()) @map("fetched_at") @db.Timestamp(6)
+  id           Int      @id @default(autoincrement())
+  runId        String?  @map("run_id") @db.Uuid
+  spider       String   @db.VarChar(64)
+  type         String   @db.VarChar(32)
+  url          String
+  urlHash      String   @map("url_hash") @db.Char(40)
+  contentHash  String   @map("content_hash") @db.Char(40)
+  payload      Json
+  fetchedAt    DateTime @default(now()) @map("fetched_at") @db.Timestamp(6)
   // Phase 5：多平台标记
-  platform    String?  @db.VarChar(32)
-  kind        String?  @db.VarChar(16)
-  sourceId    String?  @map("source_id") @db.VarChar(128)
+  platform     String?  @db.VarChar(32)
+  kind         String?  @db.VarChar(16)
+  sourceId     String?  @map("source_id") @db.VarChar(128)
   // RFC 0003：来源 chip 过滤用
-  triggerKind String?  @map("trigger_kind") @db.VarChar(16)
-  taskId      String?  @map("task_id") @db.Uuid
+  triggerKind  String?  @map("trigger_kind") @db.VarChar(16)
+  taskId       String?  @map("task_id") @db.Uuid
+  // 快取（extract）链路：当 item 来自 /api/extract 时回填 extract_jobs.id
+  // 与 runId 互斥：extract 不再走 runs，extract_job_id 非空时 run_id=null
+  extractJobId String?  @map("extract_job_id") @db.Uuid
 
-  run Run? @relation(fields: [runId], references: [id], onDelete: SetNull)
+  run        Run?        @relation(fields: [runId], references: [id], onDelete: SetNull)
+  extractJob ExtractJob? @relation(fields: [extractJobId], references: [id], onDelete: SetNull)
 
   @@unique([spider, urlHash, contentHash], map: "uniq_items_spider_url_content")
   @@index([spider, type], map: "idx_items_spider_type")
@@ -159,7 +163,43 @@ model Item {
   @@index([kind], map: "idx_items_kind")
   @@index([platform], map: "idx_items_platform")
   @@index([triggerKind], map: "idx_items_trigger_kind")
+  @@index([extractJobId], map: "idx_items_extract_job_id")
   @@map("items")
+}
+
+// ──────────────────────────────────────────────────────────
+// extract_jobs —— 快取（按链接抓取）任务
+// ──────────────────────────────────────────────────────────
+//
+// 与 runs 解耦：URL 驱动的快取走自己的轻量任务表，不再借用 spider/run。
+// 一条 extract_job 对应用户一次提交的 URL 批次：
+//   - submittedUrls：用户原始输入（含 invalid / unsupported，留作审计）
+//   - results：每条 supported URL 的处理状态 map（key = canonicalUrl）
+//   - succeeded / failed：聚合计数；total = len(results)
+//   - status：running 入队即置；completed 当 succeeded+failed=total
+//
+// 失败原因 / 命中的 platform / 关联 item id 都写在 results jsonb 内部，
+// 不再依赖 events 表。
+
+model ExtractJob {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// 用户原始提交的 URL 字符串数组（含被拒绝项），仅作审计
+  submittedUrls Json      @default("[]") @map("submitted_urls")
+  /// 每条 canonical URL 的状态 map：
+  /// { [canonicalUrl]: { originalUrl, platform, status, errorCode?, errorMessage?, itemId?, finishedAt? } }
+  results       Json      @default("{}")
+  total         Int       @default(0)
+  succeeded     Int       @default(0)
+  failed        Int       @default(0)
+  status        String    @default("running") @db.VarChar(16)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  finishedAt    DateTime? @map("finished_at") @db.Timestamp(6)
+
+  items Item[]
+
+  @@index([createdAt], map: "idx_extract_jobs_created_at")
+  @@index([status], map: "idx_extract_jobs_status")
+  @@map("extract_jobs")
 }
 
 // ──────────────────────────────────────────────────────────

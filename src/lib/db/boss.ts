@@ -11,11 +11,28 @@ import PgBoss from 'pg-boss';
 
 export const QUEUE_CRAWL = 'crawl';
 
+/**
+ * 快取任务专用队列：与 crawl 解耦，不经过 spider/run/event 体系。
+ * 每条 supported URL 单独入队 → ExtractJobData，并发由 pg-boss 自动调度。
+ */
+export const QUEUE_EXTRACT = 'extract';
+
 export interface CrawlJobData {
   runId: string;
   /** spiders.id UUID */
   spiderId: string;
   overrides?: Record<string, unknown>;
+}
+
+export interface ExtractJobData {
+  /** extract_jobs.id UUID —— worker 写完结果后回更其计数 */
+  extractJobId: string;
+  /** 用户原始提交的 URL（标准化前），用于 UI 回显与审计 */
+  originalUrl: string;
+  /** inspect 标准化后的 URL；同时是 results map 的 key 与 items.url */
+  canonicalUrl: string;
+  /** 命中的平台（用于路由 extractor，避免 worker 里再做一次 dispatch） */
+  platform: string;
 }
 
 interface CachedBoss {

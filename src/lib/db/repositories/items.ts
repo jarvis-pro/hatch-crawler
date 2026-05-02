@@ -24,6 +24,19 @@ export interface SaveItemInput {
   // RFC 0003
   triggerKind?: string | null;
   taskId?: string | null;
+  /** 快取链路 FK：与 runId 互斥，extract 链路写 item 时使用 */
+  extractJobId?: string | null;
+}
+
+export interface SaveItemOutput {
+  isNew: boolean;
+  /**
+   * 写入或命中的 items.id。
+   *  - upsert 路径（platform+sourceId）：始终返回 id
+   *  - try/catch 路径（仅 spider+url+contentHash 唯一）：仅 isNew=true 时返回 id；
+   *    P2002 冲突分支没有 RETURNING，调用方需要时再二次查
+   */
+  id?: number;
 }
 
 /**
@@ -37,31 +50,32 @@ export interface SaveItemInput {
  * isNew=true  → 首次写入
  * isNew=false → 已存在（内容相同跳过 / upsert 更新了已有行）
  */
-export async function save(db: Db, input: SaveItemInput): Promise<{ isNew: boolean }> {
+export async function save(db: Db, input: SaveItemInput): Promise<SaveItemOutput> {
   const urlHash = sha1(input.url);
   const contentHash = sha1(JSON.stringify(input.payload));
 
   // ── 有来源 ID：走 upsert，用 platform+sourceId 去重 ──────────────────────────
   if (input.platform && input.sourceId) {
     // 利用部分唯一索引做 ON CONFLICT，xmax=0 表示新插入行（xmax!=0 表示已更新行）
-    const rows = await db.$queryRawUnsafe<{ is_new: boolean }[]>(
+    const rows = await db.$queryRawUnsafe<{ is_new: boolean; id: number }[]>(
       `INSERT INTO "items"
-         ("run_id","spider","type","url","url_hash","content_hash","payload","platform","kind","source_id","trigger_kind","task_id")
-       VALUES ($1::uuid,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12::uuid)
+         ("run_id","spider","type","url","url_hash","content_hash","payload","platform","kind","source_id","trigger_kind","task_id","extract_job_id")
+       VALUES ($1::uuid,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12::uuid,$13::uuid)
        ON CONFLICT ("platform","source_id")
          WHERE "platform" IS NOT NULL AND "source_id" IS NOT NULL
        DO UPDATE SET
-         "run_id"       = EXCLUDED."run_id",
-         "spider"       = EXCLUDED."spider",
-         "url"          = EXCLUDED."url",
-         "url_hash"     = EXCLUDED."url_hash",
-         "content_hash" = EXCLUDED."content_hash",
-         "payload"      = EXCLUDED."payload",
-         "kind"         = EXCLUDED."kind",
-         "trigger_kind" = EXCLUDED."trigger_kind",
-         "task_id"      = EXCLUDED."task_id",
-         "fetched_at"   = now()
-       RETURNING (xmax = 0) AS is_new`,
+         "run_id"         = EXCLUDED."run_id",
+         "spider"         = EXCLUDED."spider",
+         "url"            = EXCLUDED."url",
+         "url_hash"       = EXCLUDED."url_hash",
+         "content_hash"   = EXCLUDED."content_hash",
+         "payload"        = EXCLUDED."payload",
+         "kind"           = EXCLUDED."kind",
+         "trigger_kind"   = EXCLUDED."trigger_kind",
+         "task_id"        = EXCLUDED."task_id",
+         "extract_job_id" = EXCLUDED."extract_job_id",
+         "fetched_at"     = now()
+       RETURNING "id", (xmax = 0) AS is_new`,
       input.runId,
       input.spider,
       input.type,
@@ -74,13 +88,14 @@ export async function save(db: Db, input: SaveItemInput): Promise<{ isNew: boole
       input.sourceId,
       input.triggerKind ?? null,
       input.taskId ?? null,
+      input.extractJobId ?? null,
     );
-    return { isNew: rows[0]?.is_new === true };
+    return { isNew: rows[0]?.is_new === true, id: rows[0]?.id };
   }
 
   // ── 无来源 ID：原有 try/catch 路径 ───────────────────────────────────────────
   try {
-    await (db.item.create as (args: unknown) => Promise<unknown>)({
+    const created = (await (db.item.create as (args: unknown) => Promise<{ id: number }>)({
       data: {
         runId: input.runId,
         spider: input.spider,
@@ -94,9 +109,11 @@ export async function save(db: Db, input: SaveItemInput): Promise<{ isNew: boole
         sourceId: input.sourceId ?? null,
         triggerKind: input.triggerKind ?? null,
         taskId: input.taskId ?? null,
+        extractJobId: input.extractJobId ?? null,
       },
-    });
-    return { isNew: true };
+      select: { id: true },
+    })) as { id: number };
+    return { isNew: true, id: created.id };
   } catch (err) {
     if (
       typeof err === 'object' &&
