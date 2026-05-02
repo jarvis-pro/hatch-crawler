@@ -14,7 +14,6 @@ import { WeiboSearchSpider } from '@/lib/crawler/platforms/weibo/spiders/search'
 import { WeiboUserPostsSpider } from '@/lib/crawler/platforms/weibo/spiders/user-posts';
 import { DouyinSearchSpider } from '@/lib/crawler/platforms/douyin/spiders/search';
 import { DouyinUserVideosSpider } from '@/lib/crawler/platforms/douyin/spiders/user-videos';
-import { UrlExtractorSpider } from '@/lib/crawler/spiders/url-extractor';
 
 /**
  * Spider 注册表：name → 入口描述。
@@ -173,15 +172,8 @@ export const SPIDER_REGISTRY: Record<string, SpiderEntry> = {
       maxResults: z.number().int().min(1).max(500).default(100).describe('最多抓取数量'),
     }),
   },
-  'url-extractor': {
-    factory: (params) => new UrlExtractorSpider(params),
-    // 不绑定单一平台——它按 URL 分发到对应 extractor
-    excludeFromAutoDisable: true,
-    description: '粘贴 URL 列表，自动识别平台并抓取详情',
-    paramSchema: z.object({
-      urls: z.array(z.string().url()).min(1).describe('URL 列表（每行一条）'),
-    }),
-  },
+  // 注：url-extractor 已下线（迁移到独立 /api/extract → extract_jobs 链路）。
+  // 历史 spiders.type='url-extractor' 行由 migrate.ts 一次性 DELETE 清理。
 };
 
 export function getSpiderEntry(name: string): SpiderEntry | null {

@@ -22,7 +22,8 @@ export async function register(): Promise<void> {
   await runMigrations(databaseUrl);
   console.warn('[instrumentation] migrations done');
 
-  // 在迁移之后、worker 启动之前 seed 内置 spider（如 url-extractor）。
+  // 在迁移之后、worker 启动之前 seed 内置 spider。
+  // 当前 BUILTINS 为空（url-extractor 已下线），保留调用点以备未来扩展。
   // 幂等：已存在则跳过，不会覆盖用户手动修改过的字段。
   console.warn('[instrumentation] ensuring builtin spiders...');
   await ensureBuiltinSpiders(getDb(databaseUrl));
