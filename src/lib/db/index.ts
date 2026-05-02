@@ -10,6 +10,8 @@ import type {
   Spider as PrismaSpider,
 } from '@prisma/client';
 
+// WebhookDelivery は raw SQL で管理するため Prisma 型エクスポートは不要
+
 // 客户端
 export { getDb, closeDb, type Db } from './client';
 export { getBoss, closeBoss, QUEUE_CRAWL, type CrawlJobData } from './boss';
@@ -37,10 +39,7 @@ export { RunStatus, EventLevel } from '@prisma/client';
  * Prisma 把 jsonb 列推断成 `JsonValue`；这里把已知形状的 jsonb 收紧成业务类型，
  * 让 repository / 调用方少写一道 cast。写入时这些字段会被 Prisma 接受为 InputJson。
  */
-export type Spider = Omit<
-  PrismaSpider,
-  'startUrls' | 'allowedHosts' | 'defaultParams' | 'displayName'
-> & {
+export type Spider = Omit<PrismaSpider, 'startUrls' | 'allowedHosts' | 'defaultParams'> & {
   /**
    * UUID 主键。prisma generate 运行后由 PrismaSpider 自动提供；
    * 这里显式声明保证 generate 前也能编译。
@@ -54,6 +53,8 @@ export type Spider = Omit<
   startUrls: string[];
   allowedHosts: string[];
   defaultParams: Record<string, unknown>;
+  /** RFC 0003：任务类型派生标记（subscription / batch / extract） */
+  taskKind: string;
 };
 
 export type Run = Omit<PrismaRun, 'overrides'> & {
@@ -63,6 +64,8 @@ export type Run = Omit<PrismaRun, 'overrides'> & {
    */
   spiderId: string | null;
   overrides: Record<string, unknown> | null;
+  /** RFC 0003：同步自 spider.task_kind，查询时免 JOIN */
+  taskKind: string | null;
 };
 
 export type Event = Omit<PrismaEvent, 'payload'> & {
@@ -75,6 +78,9 @@ export type Item = Omit<PrismaItem, 'payload'> & {
   platform: string | null;
   kind: string | null;
   sourceId: string | null;
+  // RFC 0003：来源 chip 过滤用
+  triggerKind: string | null;
+  taskId: string | null;
 };
 
 export type Setting = PrismaSetting;
@@ -95,15 +101,19 @@ export type NewSpider = {
   cronSchedule?: string | null;
   platform?: string | null;
   defaultParams?: Record<string, unknown>;
+  /** RFC 0003：subscription / batch / extract；null = 自动推断 */
+  taskKind?: string | null;
 };
 
 export type NewRun = {
   /** spiders.id UUID，作为 FK */
   spiderId: string;
-  /** 冗余存储 spider.name（注册表类型键），便于查询与展示 */
+  /** 冗余存储 spider.name（用户显示名），便于查询与展示 */
   spiderName: string;
   triggerType: string;
   overrides?: Record<string, unknown>;
+  /** RFC 0003：同步自 spider.task_kind */
+  taskKind?: string | null;
 };
 
 export type NewEvent = {
@@ -126,4 +136,7 @@ export type NewItem = {
   platform?: string | null;
   kind?: string | null;
   sourceId?: string | null;
+  // RFC 0003
+  triggerKind?: string | null;
+  taskId?: string | null;
 };

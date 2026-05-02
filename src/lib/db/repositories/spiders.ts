@@ -23,6 +23,7 @@ interface RawRow {
   platform: string | null;
   emits_kinds: unknown;
   default_params: unknown;
+  task_kind: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -32,7 +33,7 @@ const SELECT_COLS = `
   "start_urls", "allowed_hosts",
   "max_depth", "concurrency", "per_host_interval_ms",
   "enabled", "cron_schedule", "platform", "emits_kinds",
-  "default_params",
+  "default_params", "task_kind",
   "created_at", "updated_at"
 `.trim();
 
@@ -52,14 +53,35 @@ function shape(row: RawRow): Spider {
     platform: row.platform ?? null,
     emitsKinds: (row.emits_kinds as string[]) ?? [],
     defaultParams: (row.default_params as Record<string, unknown>) ?? {},
+    taskKind: row.task_kind ?? 'batch',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   } as Spider;
 }
 
+/** 派生 task_kind：按规则从 type + cron_schedule 推断（供 create/update 时使用） */
+export function deriveTaskKind(
+  type: string,
+  cronSchedule: string | null | undefined,
+  explicit?: string | null,
+): string {
+  if (explicit) return explicit;
+  if (type === 'url-extractor') return 'extract';
+  if (cronSchedule) return 'subscription';
+  return 'batch';
+}
+
 export async function listAll(db: Db): Promise<Spider[]> {
   const rows = await db.$queryRawUnsafe<RawRow[]>(
     `SELECT ${SELECT_COLS} FROM "spiders" ORDER BY "name" ASC`,
+  );
+  return rows.map(shape);
+}
+
+export async function listByTaskKind(db: Db, taskKind: string): Promise<Spider[]> {
+  const rows = await db.$queryRawUnsafe<RawRow[]>(
+    `SELECT ${SELECT_COLS} FROM "spiders" WHERE "task_kind" = $1 ORDER BY "name" ASC`,
+    taskKind,
   );
   return rows.map(shape);
 }
@@ -96,19 +118,20 @@ export async function getByType(db: Db, type: string): Promise<Spider | null> {
 }
 
 export async function create(db: Db, input: NewSpider): Promise<Spider> {
+  const taskKind = deriveTaskKind(input.type, input.cronSchedule, input.taskKind);
   const rows = await db.$queryRawUnsafe<RawRow[]>(
     `INSERT INTO "spiders" (
-      "name", "type", "display_name", "description",
+      "name", "type", "description",
       "start_urls", "allowed_hosts",
       "max_depth", "concurrency", "per_host_interval_ms",
       "enabled", "cron_schedule", "platform",
-      "default_params"
+      "default_params", "task_kind"
     ) VALUES (
-      $1, $2, $1, $3,
+      $1, $2, $3,
       $4::jsonb, $5::jsonb,
       $6, $7, $8,
       $9, $10, $11,
-      $12::jsonb
+      $12::jsonb, $13
     ) RETURNING ${SELECT_COLS}`,
     input.name,
     input.type,
@@ -122,17 +145,18 @@ export async function create(db: Db, input: NewSpider): Promise<Spider> {
     input.cronSchedule ?? null,
     input.platform ?? null,
     JSON.stringify(input.defaultParams ?? {}),
+    taskKind,
   );
   if (!rows[0]) throw new Error('spider insert returned no row');
   return shape(rows[0]);
 }
 
 export async function update(db: Db, id: string, input: NewSpider): Promise<Spider> {
+  const taskKind = deriveTaskKind(input.type, input.cronSchedule, input.taskKind);
   const rows = await db.$queryRawUnsafe<RawRow[]>(
     `UPDATE "spiders" SET
       "name"                 = $1,
       "type"                 = $2,
-      "display_name"         = $1,
       "description"          = $3,
       "start_urls"           = $4::jsonb,
       "allowed_hosts"        = $5::jsonb,
@@ -143,8 +167,9 @@ export async function update(db: Db, id: string, input: NewSpider): Promise<Spid
       "cron_schedule"        = $10,
       "platform"             = $11,
       "default_params"       = $12::jsonb,
+      "task_kind"            = $13,
       "updated_at"           = now()
-    WHERE "id" = $13::uuid
+    WHERE "id" = $14::uuid
     RETURNING ${SELECT_COLS}`,
     input.name,
     input.type,
@@ -158,6 +183,7 @@ export async function update(db: Db, id: string, input: NewSpider): Promise<Spid
     input.cronSchedule ?? null,
     input.platform ?? null,
     JSON.stringify(input.defaultParams ?? {}),
+    taskKind,
     id,
   );
   if (!rows[0]) throw new Error(`spider not found: ${id}`);
