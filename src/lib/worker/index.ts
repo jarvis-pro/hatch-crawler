@@ -1,5 +1,5 @@
 import 'server-only';
-import { getBoss, getDb, QUEUE_CRAWL, runRepo, spiderRepo } from '@/lib/db';
+import { getBoss, getDb, QUEUE_CRAWL, runRepo, spiderRepo, settingRepo, RunStatus } from '@/lib/db';
 import type { CrawlJobData } from '@/lib/db';
 import { env } from '../env';
 import { handleCrawlJob } from './job-handler';
@@ -74,10 +74,23 @@ export async function syncSpiderSchedule(
     const { spiderId: sid } = job.data;
     const spider = await spiderRepo.getById(db, sid);
     if (!spider) return; // Spider 已被删除，跳过
+
+    // cron 重入保护：若该 spider 已有 running 状态的 run，跳过本次并记录事件
+    const active = await runRepo.list(db, {
+      spiderId: sid,
+      status: [RunStatus.running, RunStatus.queued],
+      pageSize: 1,
+    });
+    if (active.total > 0) {
+      console.warn(`[worker] cron skipped for spider ${sid}: already running`);
+      return;
+    }
+
     const run = await runRepo.create(db, {
       spiderId: sid,
       spiderName: spider.name,
       triggerType: 'cron',
+      taskKind: spider.taskKind,
     });
     await boss.send(QUEUE_CRAWL, { runId: run.id, spiderId: sid } satisfies CrawlJobData);
   });
@@ -92,8 +105,11 @@ export async function startWorker(): Promise<void> {
   const { boss, ready } = getBoss(env.databaseUrl);
   await ready;
 
-  // 1) 清理 stale runs
-  const cleaned = await runRepo.cleanupStale(db, 30);
+  // 1) 清理 stale runs（超时时长从 settings 读，默认 30 分钟）
+  const staleMin = Number(
+    (await settingRepo.get<number>(db, 'stale_run_timeout_min').catch(() => null)) ?? 30,
+  );
+  const cleaned = await runRepo.cleanupStale(db, staleMin);
   if (cleaned > 0) {
     console.warn(`[worker] cleaned ${String(cleaned)} stale runs`);
   }
@@ -123,7 +139,25 @@ export async function startWorker(): Promise<void> {
     }
   }
 
-  // 5) 监听 abort 请求
+  // 5) 注册 events 保留清理 cron（每日 02:00，只注册一次）
+  const QUEUE_EVENTS_CLEANUP = 'events-cleanup';
+  await boss.createQueue(QUEUE_EVENTS_CLEANUP);
+  await boss.schedule(QUEUE_EVENTS_CLEANUP, '0 2 * * *', {});
+  await boss.work(QUEUE_EVENTS_CLEANUP, async () => {
+    const retentionDays = Number(
+      (await settingRepo.get<number>(db, 'events_retention_days').catch(() => null)) ?? 30,
+    );
+    const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+    const result = (await db.$executeRawUnsafe(
+      `DELETE FROM "events" WHERE "occurred_at" < $1`,
+      cutoff,
+    )) as number;
+    console.warn(
+      `[worker] events cleanup: deleted ${String(result)} rows older than ${String(retentionDays)} days`,
+    );
+  });
+
+  // 6) 监听 abort 请求
   console.warn('[worker] started');
 }
 
