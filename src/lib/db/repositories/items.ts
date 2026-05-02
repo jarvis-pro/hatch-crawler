@@ -57,7 +57,9 @@ export async function save(db: Db, input: SaveItemInput): Promise<SaveItemOutput
   // ── 有来源 ID：走 upsert，用 platform+sourceId 去重 ──────────────────────────
   if (input.platform && input.sourceId) {
     // 利用部分唯一索引做 ON CONFLICT，xmax=0 表示新插入行（xmax!=0 表示已更新行）
-    const rows = await db.$queryRawUnsafe<{ is_new: boolean; id: number }[]>(
+    // 注：$queryRawUnsafe 在某些 Prisma 版本下会把 PG 整数列回传为 JS BigInt，
+    //    下游 JSON.stringify 直接炸；统一在出口处 Number(...) 强转回常规 number。
+    const rows = await db.$queryRawUnsafe<{ is_new: boolean; id: number | bigint }[]>(
       `INSERT INTO "items"
          ("run_id","spider","type","url","url_hash","content_hash","payload","platform","kind","source_id","trigger_kind","task_id","extract_job_id")
        VALUES ($1::uuid,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12::uuid,$13::uuid)
@@ -90,7 +92,11 @@ export async function save(db: Db, input: SaveItemInput): Promise<SaveItemOutput
       input.taskId ?? null,
       input.extractJobId ?? null,
     );
-    return { isNew: rows[0]?.is_new === true, id: rows[0]?.id };
+    const rawId = rows[0]?.id;
+    return {
+      isNew: rows[0]?.is_new === true,
+      id: rawId !== undefined ? Number(rawId) : undefined,
+    };
   }
 
   // ── 无来源 ID：原有 try/catch 路径 ───────────────────────────────────────────
