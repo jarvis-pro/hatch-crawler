@@ -42,28 +42,30 @@ enum EventLevel {
 
 model Spider {
   /// UUID 主键，由数据库自动生成
-  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// 用户自定义显示名称（中文友好，如 "YouTube 搜索 - 健身"），可重复
-  name              String   @db.VarChar(128)
+  name                String   @db.VarChar(128)
   /// 注册表类型键（如 "youtube-channel-videos"），worker 靠此反查实现类
-  type              String   @db.VarChar(64)
-  description       String?
-  startUrls         Json     @map("start_urls")
-  allowedHosts      Json     @default("[]") @map("allowed_hosts")
-  maxDepth          Int      @default(2) @map("max_depth")
-  concurrency       Int      @default(4)
-  perHostIntervalMs Int      @default(500) @map("per_host_interval_ms")
-  enabled           Boolean  @default(true)
-  cronSchedule      String?  @map("cron_schedule") @db.VarChar(64)
+  type                String   @db.VarChar(64)
+  description         String?
+  startUrls           Json     @map("start_urls")
+  allowedHosts        Json     @default("[]") @map("allowed_hosts")
+  maxDepth            Int      @default(2) @map("max_depth")
+  concurrency         Int      @default(4)
+  perHostIntervalMs   Int      @default(500) @map("per_host_interval_ms")
+  enabled             Boolean  @default(true)
+  cronSchedule        String?  @map("cron_schedule") @db.VarChar(64)
   // Phase 5：多平台标记
-  platform          String?  @db.VarChar(32)
-  emitsKinds        Json     @default("[]") @map("emits_kinds")
+  platform            String?  @db.VarChar(32)
+  emitsKinds          Json     @default("[]") @map("emits_kinds")
   // Phase A：Spider 运行时参数默认值（channelId / query 等）
-  defaultParams     Json     @default("{}") @map("default_params")
+  defaultParams       Json     @default("{}") @map("default_params")
   // RFC 0003：任务类型派生标记（subscription / batch / extract）
-  taskKind          String   @map("task_kind") @db.VarChar(16)
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt         DateTime @default(now()) @map("updated_at") @db.Timestamp(6)
+  taskKind            String   @map("task_kind") @db.VarChar(16)
+  // Phase X：连续失败计数，超阈值自动停用
+  consecutiveFailures Int      @default(0) @map("consecutive_failures")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt           DateTime @default(now()) @map("updated_at") @db.Timestamp(6)
 
   runs Run[]
 
@@ -149,7 +151,7 @@ model Item {
   triggerKind String?  @map("trigger_kind") @db.VarChar(16)
   taskId      String?  @map("task_id") @db.Uuid
 
-  run         Run?         @relation(fields: [runId], references: [id], onDelete: SetNull)
+  run Run? @relation(fields: [runId], references: [id], onDelete: SetNull)
 
   @@unique([spider, urlHash, contentHash], map: "uniq_items_spider_url_content")
   @@index([spider, type], map: "idx_items_spider_type")
