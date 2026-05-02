@@ -1,6 +1,6 @@
 import { type Prisma, RunStatus } from '@prisma/client';
 import type { Db } from '../client';
-import type { Run } from '../index';
+import type { Run, TaskKind } from '../index';
 
 export interface CreateRunInput {
   spiderId: string;
@@ -8,44 +8,29 @@ export interface CreateRunInput {
   triggerType: 'manual' | 'cron';
   overrides?: Record<string, unknown>;
   /** RFC 0003：同步自 spider.task_kind */
-  taskKind?: string | null;
+  taskKind?: TaskKind | null;
 }
 
-function shape(row: {
-  overrides: unknown;
-  spider_id?: unknown;
-  task_kind?: unknown;
-  [k: string]: unknown;
-}): Run {
+function shape(row: Prisma.RunGetPayload<object>): Run {
   return {
     ...row,
-    // spider_id 列在 Prisma generate 前不在 PrismaRun 类型里，手动补入
-    spiderId:
-      (row.spider_id as string | null | undefined) ??
-      (row.spiderId as string | null | undefined) ??
-      null,
     overrides: (row.overrides ?? null) as Record<string, unknown> | null,
-    taskKind:
-      (row.task_kind as string | null | undefined) ??
-      (row.taskKind as string | null | undefined) ??
-      null,
+    taskKind: (row.taskKind ?? null) as TaskKind | null,
   } as Run;
 }
 
 export async function create(db: Db, input: CreateRunInput): Promise<{ id: string }> {
-  // spider_id / task_kind 列在 Prisma generate 前不被 Prisma client 认识，用原始 SQL 写入
-  const rows = await db.$queryRawUnsafe<{ id: string }[]>(
-    `INSERT INTO "runs" ("spider_name", "spider_id", "trigger_type", "overrides", "task_kind")
-     VALUES ($1, $2::uuid, $3, $4::jsonb, $5)
-     RETURNING "id"`,
-    input.spiderName,
-    input.spiderId,
-    input.triggerType,
-    JSON.stringify(input.overrides ?? {}),
-    input.taskKind ?? null,
-  );
-  if (!rows[0]) throw new Error('run insert returned no row');
-  return { id: rows[0].id };
+  const row = await db.run.create({
+    data: {
+      spiderName: input.spiderName,
+      spiderId: input.spiderId,
+      triggerType: input.triggerType,
+      overrides: (input.overrides ?? {}) as Prisma.InputJsonValue,
+      taskKind: input.taskKind ?? null,
+    },
+    select: { id: true },
+  });
+  return { id: row.id };
 }
 
 export async function getById(db: Db, id: string): Promise<Run | null> {
@@ -115,47 +100,10 @@ export async function list(
   const page = params.page ?? 1;
   const pageSize = params.pageSize ?? 20;
 
-  // spiderId 在 Prisma generate 前不在 RunWhereInput，用原始 SQL 补充条件
-  if (params.spiderId) {
-    const statuses = params.status
-      ? (Array.isArray(params.status) ? params.status : [params.status]).map(String)
-      : null;
-
-    const statusClause = statuses
-      ? `AND r.status = ANY(ARRAY[${statuses.map((_, i) => `$${i + 2}`).join(',')}]::run_status[])`
-      : '';
-
-    const countArgs: unknown[] = [params.spiderId];
-    const rowArgs: unknown[] = [params.spiderId];
-    if (statuses) {
-      countArgs.push(...statuses);
-      rowArgs.push(...statuses);
-    }
-    rowArgs.push(pageSize, (page - 1) * pageSize);
-
-    const countArgIdx = statuses ? statuses.length + 1 : 1;
-    const [countResult, rows] = await Promise.all([
-      db.$queryRawUnsafe<{ cnt: bigint }[]>(
-        `SELECT COUNT(*) AS cnt FROM "runs" r WHERE r.spider_id = $1::uuid ${statusClause}`,
-        ...countArgs,
-      ),
-      db.$queryRawUnsafe<(Parameters<typeof shape>[0] & { spider_id?: string })[]>(
-        `SELECT * FROM "runs" r WHERE r.spider_id = $1::uuid ${statusClause}
-         ORDER BY r.created_at DESC LIMIT $${countArgIdx + 1} OFFSET $${countArgIdx + 2}`,
-        ...rowArgs,
-      ),
-    ]);
-
-    return {
-      data: rows.map((r) => shape({ ...r, spider_id: r.spider_id })),
-      total: Number(countResult[0]?.cnt ?? 0),
-      page,
-      pageSize,
-    };
-  }
-
-  // 无 spiderId 过滤时走 Prisma
   const where: Prisma.RunWhereInput = {};
+  if (params.spiderId) {
+    where.spiderId = params.spiderId;
+  }
   if (params.status) {
     where.status = Array.isArray(params.status) ? { in: params.status } : params.status;
   }
