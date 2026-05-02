@@ -57,7 +57,8 @@
     "server-only": "^0.0.1",
     "sonner": "^1.7.0",
     "tailwind-merge": "^2.5.4",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.5.0",
