@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { CheckCircle, XCircle, Loader2, Link2 } from 'lucide-react';
-import { api } from '@/lib/api-client';
+import { api, type ListResult } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { Item } from '@/lib/db';
@@ -12,11 +12,6 @@ interface ExtractResponse {
   runId: string;
   accepted: number;
   rejected: string[];
-}
-
-interface ListResult<T> {
-  data: T[];
-  total: number;
 }
 
 type RowState = 'pending' | 'done' | 'error';

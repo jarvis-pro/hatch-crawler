@@ -2,7 +2,8 @@
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { Layers, PlusCircle } from 'lucide-react';
-import { api } from '@/lib/api-client';
+import { api, type ListResult } from '@/lib/api-client';
+import { platformBadgeClass } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import type { Spider, Run } from '@/lib/db';
@@ -15,19 +16,6 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { RunStatusBadge } from '@/components/runs/run-status-badge';
-
-interface ListResult<T> {
-  data: T[];
-  total: number;
-}
-
-const PLATFORM_BADGE: Record<string, string> = {
-  youtube: 'bg-red-100 text-red-800',
-  bilibili: 'bg-blue-100 text-blue-800',
-  xhs: 'bg-rose-100 text-rose-800',
-  weibo: 'bg-orange-100 text-orange-800',
-  douyin: 'bg-gray-100 text-gray-800',
-};
 
 function LastRunCell({ spiderId }: { spiderId: string }) {
   const { data } = useQuery({
@@ -110,7 +98,7 @@ export default function BatchesPage() {
                   <TableCell>
                     {s.platform ? (
                       <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${PLATFORM_BADGE[s.platform] ?? 'bg-gray-100 text-gray-700'}`}
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${platformBadgeClass(s.platform)}`}
                       >
                         {s.platform}
                       </span>

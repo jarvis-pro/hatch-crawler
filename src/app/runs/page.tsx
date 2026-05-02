@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { Run, Spider } from '@/lib/db';
-import { api } from '@/lib/api-client';
+import { api, type ListResult } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -18,13 +18,6 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { RunStatusBadge } from '@/components/runs/run-status-badge';
-
-interface ListResult<T> {
-  data: T[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
 
 const PAGE_SIZE = 30;
 

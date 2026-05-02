@@ -3,7 +3,7 @@ import React, { use } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import type { Run, Spider } from '@/lib/db';
-import { api } from '@/lib/api-client';
+import { api, type ListResult } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -40,13 +40,6 @@ function exportSpiderConfig(spider: Spider) {
   a.download = `spider-${spider.type}-${spider.id.slice(0, 8)}.json`;
   a.click();
   URL.revokeObjectURL(url);
-}
-
-interface ListResult<T> {
-  data: T[];
-  total: number;
-  page: number;
-  pageSize: number;
 }
 
 function fmtDuration(start: string | null, end: string | null): string {

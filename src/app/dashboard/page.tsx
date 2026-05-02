@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import type { Run } from '@/lib/db';
-import { api } from '@/lib/api-client';
+import { api, type ListResult } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatsCard } from '@/components/stats/stats-card';
@@ -18,13 +18,6 @@ interface Summary {
   failed24h: number;
   totalItems: number;
   newItems24h: number;
-}
-
-interface ListResult<T> {
-  data: T[];
-  total: number;
-  page: number;
-  pageSize: number;
 }
 
 // ── 平台 / kind 颜色 ──────────────────────────────────────────────────────────

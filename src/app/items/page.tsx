@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { Item } from '@/lib/db';
-import { api } from '@/lib/api-client';
+import { api, type ListResult } from '@/lib/api-client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -18,13 +18,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-
-interface ListResult<T> {
-  data: T[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
 
 const PAGE_SIZE = 50;
 
