@@ -60,11 +60,14 @@ model Spider {
   emitsKinds        Json     @default("[]") @map("emits_kinds")
   // Phase A：Spider 运行时参数默认值（channelId / query 等）
   defaultParams     Json     @default("{}") @map("default_params")
+  // RFC 0003：任务类型派生标记（subscription / batch / extract）
+  taskKind          String   @map("task_kind") @db.VarChar(16)
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt         DateTime @default(now()) @map("updated_at") @db.Timestamp(6)
 
   runs Run[]
 
+  @@index([taskKind], map: "idx_spiders_task_kind")
   @@map("spiders")
 }
 
@@ -74,12 +77,14 @@ model Spider {
 
 model Run {
   id          String    @id @default(uuid()) @db.Uuid
-  spiderName  String    @map("spider_name") @db.VarChar(64)
+  spiderName  String    @map("spider_name") @db.VarChar(128)
   /// FK 引用 spiders.id，nullable 兼容历史数据
   spiderId    String?   @map("spider_id") @db.Uuid
   status      RunStatus @default(queued)
   triggerType String    @map("trigger_type") @db.VarChar(16)
   overrides   Json?     @default("{}")
+  // RFC 0003：从 spider.task_kind 同步写入，查询时免 JOIN
+  taskKind    String?   @map("task_kind") @db.VarChar(16)
 
   // 统计字段，worker 增量更新
   fetched  Int @default(0)
@@ -140,6 +145,9 @@ model Item {
   platform    String?  @db.VarChar(32)
   kind        String?  @db.VarChar(16)
   sourceId    String?  @map("source_id") @db.VarChar(128)
+  // RFC 0003：来源 chip 过滤用
+  triggerKind String?  @map("trigger_kind") @db.VarChar(16)
+  taskId      String?  @map("task_id") @db.Uuid
 
   run         Run?         @relation(fields: [runId], references: [id], onDelete: SetNull)
 
@@ -148,6 +156,7 @@ model Item {
   @@index([fetchedAt], map: "idx_items_fetched_at")
   @@index([kind], map: "idx_items_kind")
   @@index([platform], map: "idx_items_platform")
+  @@index([triggerKind], map: "idx_items_trigger_kind")
   @@map("items")
 }
 
@@ -193,6 +202,27 @@ model Account {
 
   @@index([platform, status], map: "idx_accounts_platform_status")
   @@map("accounts")
+}
+
+// ──────────────────────────────────────────────────────────
+// webhook_deliveries —— Webhook 投递记录（RFC 0003 阶段二）
+// ──────────────────────────────────────────────────────────
+
+model WebhookDelivery {
+  id          Int       @id @default(autoincrement())
+  eventType   String    @map("event_type") @db.VarChar(64)
+  payload     Json
+  url         String    @db.Text
+  status      String    @default("pending") @db.VarChar(16)
+  attempts    Int       @default(0)
+  lastStatus  Int?      @map("last_status")
+  lastError   String?   @map("last_error") @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  deliveredAt DateTime? @map("delivered_at") @db.Timestamp(6)
+
+  @@index([status], map: "idx_webhook_deliveries_status")
+  @@index([createdAt], map: "idx_webhook_deliveries_created_at")
+  @@map("webhook_deliveries")
 }
 
 // ──────────────────────────────────────────────────────────
