@@ -87,8 +87,29 @@ src/lib/worker/
 
 - spider.cron_schedule 写入 → `syncSpiderSchedule(id, cron)` 在 pg-boss 上注册 `crawl-cron:<id>` 队列 → 到点产出 `triggerType='cron'` 的 run
 - run 终态时根据 `settings.webhook_url` POST `{ event, runId, spider, status, errorMessage?, at }`，10s 超时
+- 重入保护：cron 触发前先查已有 running/queued run，命中则跳过
 
-### 8. Docker Compose 一键起 ✅
+### 8. RFC 0003 — 任务模型重构 ✅
+
+三分心智模型（Subscription / Batch / Extract）落地：
+
+```
+src/app/
+├── extract/page.tsx              快取：粘贴框 + SSE 结果表（默认入口）
+├── subscriptions/page.tsx + [id]/ 订阅列表 + 详情（14 天趋势图）
+├── batches/page.tsx + [id]/       批量列表 + 详情（错误聚合 + Stop/Run）
+├── data/page.tsx + [id]/          数据浏览（来源 chip 过滤）+ 单条详情
+├── credentials/page.tsx           凭据管理（从 settings 提到一级）
+└── dev/spiders/ + dev/runs/       开发者后门（re-export 原页）
+```
+
+数据层：`spiders.task_kind` / `runs.task_kind` / `items.trigger_kind` / `items.task_id` 全部落库，worker 写 run/item 时同步带入。
+
+运维：`events_retention_days` daily cron 清理 + webhook HMAC 签名 + 3 次重试 + `webhook_deliveries` 投递记录。
+
+配置：`stale_run_timeout_min` / `max_consecutive_failures` / `events_retention_days` 全部从 settings 读，不再硬编码。
+
+### 9. Docker Compose 一键起 ✅
 
 `postgres` + `web` 两个容器；instrumentation 钩子自动跑迁移 + 起 worker。详见 [`../deploy/deployment.md`](../deploy/deployment.md)。
 
@@ -96,18 +117,19 @@ src/lib/worker/
 
 ## 工作量一览
 
-| 模块                 | 实际位置                                                            | 状态 |
-| -------------------- | ------------------------------------------------------------------- | ---- |
-| 爬虫引擎             | `src/lib/crawler` + `src/lib/shared`                                | ✅   |
-| Postgres + pg-boss   | `src/lib/db` + `scripts/db-*`                                       | ✅   |
-| 看板 + API + Worker  | `src/app` + `src/lib/worker`                                        | ✅   |
-| Docker Compose       | 根 `Dockerfile` + `docker-compose.yml`                              | ✅   |
-| Kind 化              | `src/lib/crawler/kinds`                                             | ✅   |
-| 多平台 + 凭据管理    | `src/lib/crawler/platforms` + `src/lib/db/repositories/accounts.ts` | ✅   |
-| URL 提取（按链接抓） | `src/lib/crawler/extractors` + `src/app/api/extract`                | ✅   |
-| 视频按需流式下载     | `src/lib/downloads` + `/api/items/:id/{download,formats}`           | ✅   |
-| Cron 调度            | `src/lib/worker/index.ts#syncSpiderSchedule`                        | ✅   |
-| Webhook 通知         | `src/lib/worker/job-handler.ts#notifyWebhook`                       | ✅   |
+| 模块                  | 实际位置                                                            | 状态 |
+| --------------------- | ------------------------------------------------------------------- | ---- |
+| 爬虫引擎              | `src/lib/crawler` + `src/lib/shared`                                | ✅   |
+| Postgres + pg-boss    | `src/lib/db` + `scripts/db-*`                                       | ✅   |
+| 看板 + API + Worker   | `src/app` + `src/lib/worker`                                        | ✅   |
+| Docker Compose        | 根 `Dockerfile` + `docker-compose.yml`                              | ✅   |
+| Kind 化               | `src/lib/crawler/kinds`                                             | ✅   |
+| 多平台 + 凭据管理     | `src/lib/crawler/platforms` + `src/lib/db/repositories/accounts.ts` | ✅   |
+| URL 提取（按链接抓）  | `src/lib/crawler/extractors` + `src/app/api/extract`                | ✅   |
+| 视频按需流式下载      | `src/lib/downloads` + `/api/items/:id/{download,formats}`           | ✅   |
+| Cron 调度             | `src/lib/worker/index.ts#syncSpiderSchedule`                        | ✅   |
+| Webhook 通知          | `src/lib/worker/job-handler.ts#notifyWebhook`                       | ✅   |
+| RFC 0003 任务模型重构 | `src/app/{extract,subscriptions,batches,data,credentials,dev}`      | ✅   |
 
 ## 验收清单
 
@@ -121,7 +143,7 @@ src/lib/worker/
 - [x] 配置代理 → 重新运行 → 日志里看到代理生效
 - [x] 设 cron → 自动到点跑（pg-boss schedule）
 - [x] 历史 Run 列表分页 + 批量删除
-- [x] Items 全文搜索 + 平台/kind 过滤
+- [x] Items 全文搜索 + 平台/kind 过滤 + 来源 chip 过滤（trigger_kind）
 - [x] 类型检查 + ESLint + Prettier 全过
 - [x] Web 重启后正在跑的 run 被正确标记为 failed（stale-run cleanup）
 - [x] 5 平台抓取（YouTube / Bilibili / 小红书 / 微博 / 抖音），accounts 自动注入
@@ -131,6 +153,13 @@ src/lib/worker/
 - [x] `/api/extract` 按 URL 列表抓取，不识别 URL 不让 run 失败
 - [x] 视频详情页"下载"菜单（http / yt-dlp / 仅音频 / 多分辨率）
 - [x] `/api/items/:id/formats` 实时探测 yt-dlp 可用格式
+- [x] 任务三分心智（订阅 / 批量 / 快取）— `/extract`、`/subscriptions`、`/batches`、`/data`、`/credentials`、`/dev/*`
+- [x] `items.trigger_kind` + `items.task_id` 来源追溯，`/data/:id` 回链任务详情
+- [x] cron 重入保护、stale 超时从 settings 读
+- [x] Webhook HMAC 签名 + 3 次重试 + webhook_deliveries 投递记录
+- [x] events daily cron 清理（默认保留 30 天）
+- [x] LiveLogStream `connecting → streaming → done` 状态机修复
+- [x] `/api/items/:id/download` SSRF 修复（payload URL 白名单）
 
 ### 待完成（仍开放）
 

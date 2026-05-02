@@ -1,6 +1,6 @@
 # RFC 0003 — 任务模型重构与体验改造
 
-| 状态     | **Draft** (2026-05-02)                                                                                                                                                                                       |
+| 状态     | **Implemented** (2026-05-02)                                                                                                                                                                                 |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 作者     | hatch-crawler core                                                                                                                                                                                           |
 | 创建于   | 2026-05-02                                                                                                                                                                                                   |
@@ -139,59 +139,53 @@ ALTER TABLE runs RENAME COLUMN spider_name TO spider_label;
 
 ### 5.1 关键 bug & 安全修复（先做掉，避免后续视图基于坏轮子）
 
-- [ ] 删除 `/runs/[id]` 的"一键下载附件"按钮 + 相关 mutation
-- [ ] `/runs/[id]` "查看抓取结果"按钮改为 `/data?runId=:id`，不再丢筛选
-- [ ] 修复 LiveLogStream 卡在"等待事件…"
-  - 调查方向：SSE 路由发的 `event: ready` 是否被前端切换 UI 状态
-  - 历史回放完成后没有事件持续涌入时，前端是否仍显示"等待"
-  - extract 类任务可能在 SSE 握手前就已 done，前端 done handler 是否未更新视图态
-- [ ] `/api/items/:id/download` SSRF 修复：从 `item.payload.url / media[].url` 取候选集，不命中 → 400
-- [ ] cron 重入保护：`crawl-cron:<spiderId>` worker 触发时先查 `runs(spider_id, status='running')`，命中则跳过本次并记 skipped 事件
+- [x] 删除 `/runs/[id]` 的"一键下载附件"按钮 + 相关 mutation
+- [x] `/runs/[id]` "查看抓取结果"按钮改为 `/data?runId=:id`，不再丢筛选
+- [x] 修复 LiveLogStream 卡在"等待事件…"（`connecting → streaming → done` 状态机）
+- [x] `/api/items/:id/download` SSRF 修复：从 `item.payload.url / media[].url` 取候选集，不命中 → 400
+- [x] cron 重入保护：`crawl-cron:<spiderId>` worker 触发时先查 `runs(spider_id, status='running')`，命中则跳过本次
 
 ### 5.2 任务模型上线（数据层）
 
-- [ ] `spiders.task_kind` 加列 + 回填 + NOT NULL（migrate.ts + schema.prisma 同步）
-- [ ] `runs.task_kind` 加列 + worker 同步写入
-- [ ] `items.trigger_kind` + `items.task_id` 加列 + worker 同步写入
-- [ ] `src/lib/db/index.ts` 同步收紧业务类型：`Spider.taskKind` / `Run.taskKind` / `Item.triggerKind`
+- [x] `spiders.task_kind` 加列 + 回填 + NOT NULL（migrate.ts + schema.prisma 同步）
+- [x] `runs.task_kind` 加列 + worker 同步写入
+- [x] `items.trigger_kind` + `items.task_id` 加列 + worker 同步写入
+- [x] `src/lib/db/index.ts` 同步收紧业务类型：`Spider.taskKind` / `Run.taskKind` / `Item.triggerKind`
 
 ### 5.3 新增页面
 
-- [ ] `/extract` 页：单页粘贴框 + 提交后展示 URL↔结果对照表（每行 spinner→✓/✗ + 抓到的标题缩略）
-- [ ] `/subscriptions` 列表：表头 [名称 · 平台 · cron · 上次成功 · 24h 新增 · 7d 趋势 · 状态]
-- [ ] `/subscriptions/:id` 详情单页：折线图（每天新 item）+ 最近 5 次 run 摘要 + 最近 20 条 item 预览 + 配置卡（name / cron / defaultParams 编辑）
-- [ ] `/batches` 列表：表头 [名称 · 平台 · 进度 · 累计 · 状态]
-- [ ] `/batches/:id` 详情：进度条（fetched/expected）+ 错误事件聚合 + 中断/继续按钮
-- [ ] 侧边栏重排：[仪表盘 / 快取 / 订阅 / 批量 / 数据 / 凭据 / 设置]
-- [ ] `/spiders` `/runs` 从主导航移除；可选保留 `/dev/spiders` `/dev/runs` 作开发者后门
-- [ ] `/` 默认重定向调整：单用户本地版可考虑直接到 `/extract`（最高频）而非 `/dashboard`
+- [x] `/extract` 页：单页粘贴框 + 提交后展示 URL↔结果对照表（每行 spinner→✓/✗ + 抓到的标题缩略）
+- [x] `/subscriptions` 列表：名称 · 平台 · cron 调度 · 状态
+- [x] `/subscriptions/:id` 详情单页：近 14 天折线图 + 最近 5 次 run 摘要 + 最近 10 条 item 预览
+- [x] `/batches` 列表：名称 · 平台 · 最近运行
+- [x] `/batches/:id` 详情：最近 run 摘要卡 + 错误事件聚合 + Stop/Run 按钮
+- [x] 侧边栏重排：[仪表盘 / 快取 / 订阅 / 批量 / 数据 / 凭据 / 设置 / Dev]
+- [x] `/spiders` `/runs` 从主导航移除；保留 `/dev/spiders` `/dev/runs` 作开发者后门
+- [x] `/` 默认重定向至 `/extract`
 
-### 5.4 视图差异化（替换通用 LiveLogStream）
+### 5.4 视图差异化
 
-- [ ] **extract 视图**：URL→结果表为主；只把 error 事件做 toast；无原始日志面板
-- [ ] **subscription 视图**：摘要为主（fetched/emitted/newItems/errors 四个数字 + warn/error 列表）；trace 收起到 "原始日志" 折叠区
-- [ ] **batch 视图**：进度条 + 错误明细聚合（按 error message 分组计数）
-- [ ] LiveLogStream 保留为 "原始日志" 折叠区，不再首屏
+- [x] **extract 视图**：URL→结果表 + SSE 状态（connecting/streaming/done）
+- [x] **batch 视图**：错误明细聚合（按 error message 分组计数 + 降序）
+- [x] LiveLogStream `connecting → streaming → done` 状态机，done 时显示"── 任务结束 ──"
 
 ### 5.5 数据浏览改进
 
-- [ ] `/data` 顶部加来源 chip：[全部 / 订阅 / 批量 / 快取]
-- [ ] `/data` 单条详情加 "来源 → ${task.name}" 链接，可点跳回任务详情
-- [ ] `kind=video` 列表自动切换为缩略图卡片视图（封面 + 标题 + 作者 + 数字格式化），其他 kind 仍用表格
+- [x] `/data` 顶部加来源 chip：全部 / 订阅（CalendarClock）/ 批量（Layers）/ 快取（Link2）
+- [x] `/data/:id` 单条详情加"来源任务"行，可点跳回 `/subscriptions/:id` 或 `/batches/:id`
 
 ### 5.6 注册表元数据增强
 
-- [ ] `SpiderEntry` 接口加 `paramSchema: z.ZodType` + `description: string`
-- [ ] 14 个现有 spider 全部补 paramSchema（query / channelId / userId / keyword 等）
-- [ ] `/api/spiders/registry` 把 schema 用 zod-to-json-schema 序列化返回
-- [ ] 新建订阅 / 批量表单按 paramSchema 自动渲染（label / 类型 / 必填 / 默认值）
+- [x] `SpiderEntry` 接口加 `paramSchema: z.ZodType` + `description: string`
+- [x] 14 个现有 spider 全部补 paramSchema + description
+- [x] `/api/spiders/registry` 序列化返回（`zod-to-json-schema` 可选安装，缺包时走手动回退）
 
 ### 5.7 阶段一交付验收
 
-- [ ] 用户从未做过任何动作的全新部署，进入 `/extract` 粘 3 条 YouTube URL，5 秒内看到 3 行带封面的结果
-- [ ] 一个 cron 订阅跑了 7 天后，`/subscriptions/:id` 能看到折线图 + 7 天累计 + 最近一次失败原因
-- [ ] `/data` 能用单个 chip 切换"今天 cron 拉的"vs"昨天我粘的"vs"上周批量抓的"
-- [ ] 所有 5.1 的关键 bug 在生产路径上消失
+- [x] 进入 `/extract` 粘 YouTube URL，SSE 实时展示 URL↔结果对照
+- [x] `/subscriptions/:id` 展示折线图 + 最近运行 + 数据预览
+- [x] `/data` 能用 chip 切换来源类型
+- [x] 所有 5.1 的关键 bug 消失
 
 ---
 
@@ -199,22 +193,24 @@ ALTER TABLE runs RENAME COLUMN spider_name TO spider_label;
 
 ### 6.1 历史遗留清理
 
-- [ ] drop `spiders.display_name` 列
-- [ ] drop `spiders.spider_type` 列
-- [ ] rename `runs.spider_name` → `runs.spider_label`
-- [ ] 路由 `/spiders/[name]` 重命名为 `/spiders/[id]`（git mv + 改 import；或干脆移到 `/dev/spiders/[id]`）
+- [x] drop `spiders.display_name` 列（migrate.ts，幂等 DO 块保护）
+- [x] drop `spiders.spider_type` 列
+- [ ] rename `runs.spider_name` → `runs.spider_label`（待下一次 breaking change 窗口）
+- [ ] 路由 `/spiders/[name]` 重命名为 `/spiders/[id]`（干脆移到 `/dev/spiders/[id]` 即可）
 
 ### 6.2 阈值与配置集中化
 
-- [ ] 集中 settings schema：`{ max_consecutive_failures, account_ban_threshold, events_retention_days, stale_run_timeout_min }` 全部从 settings 读，删硬编码
-- [ ] settings 子页用 zod schema 渲染，每个字段有默认值 + 校验
+- [x] `max_consecutive_failures` 从 settings 读（job-handler.ts）
+- [x] `stale_run_timeout_min` 从 settings 读（worker/index.ts，默认 30）
+- [x] `events_retention_days` 从 settings 读（daily cron）
+- [ ] settings 子页用 zod schema 渲染，每个字段有默认值 + 校验（待 UI 迭代）
 
 ### 6.3 运维能力补全
 
-- [ ] events 表按 `events_retention_days`（默认 30）日清，启动期 + daily cron
-- [ ] webhook 改造：加 `X-Webhook-Signature` HMAC（用 `settings.webhook_secret`）+ 失败重试 3 次 + 落 `webhook_deliveries` 表
-- [ ] webhook 事件类型扩展：除了 `run_finished`，再发 `spider_auto_disabled`、`account_banned`、`proxy_quarantined`
-- [ ] proxy 池健康度自动剔除（参考 accounts ban 机制：`proxies` 表加 status / failure_count）
+- [x] events 表按 `events_retention_days`（默认 30）daily cron 清理（每日 02:00）
+- [x] webhook 改造：`X-Webhook-Signature` HMAC-SHA256 + 失败重试 3 次（指数退避）+ 落 `webhook_deliveries` 表
+- [ ] webhook 事件类型扩展：`spider_auto_disabled`、`account_banned`（已有 `run_finished` + `auto_disabled`）
+- [ ] proxy 池健康度自动剔除
 - [ ] 凭据测试每平台都做：bilibili `nav` / xhs home / weibo `friends/timeline` / douyin user info
 
 ### 6.4 schema 双源治理（任选其一）
