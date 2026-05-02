@@ -7,9 +7,16 @@ export interface CreateRunInput {
   spiderName: string;
   triggerType: 'manual' | 'cron';
   overrides?: Record<string, unknown>;
+  /** RFC 0003：同步自 spider.task_kind */
+  taskKind?: string | null;
 }
 
-function shape(row: { overrides: unknown; spider_id?: unknown; [k: string]: unknown }): Run {
+function shape(row: {
+  overrides: unknown;
+  spider_id?: unknown;
+  task_kind?: unknown;
+  [k: string]: unknown;
+}): Run {
   return {
     ...row,
     // spider_id 列在 Prisma generate 前不在 PrismaRun 类型里，手动补入
@@ -18,19 +25,24 @@ function shape(row: { overrides: unknown; spider_id?: unknown; [k: string]: unkn
       (row.spiderId as string | null | undefined) ??
       null,
     overrides: (row.overrides ?? null) as Record<string, unknown> | null,
+    taskKind:
+      (row.task_kind as string | null | undefined) ??
+      (row.taskKind as string | null | undefined) ??
+      null,
   } as Run;
 }
 
 export async function create(db: Db, input: CreateRunInput): Promise<{ id: string }> {
-  // spider_id 列在 Prisma generate 前不被 Prisma client 认识，用原始 SQL 写入
+  // spider_id / task_kind 列在 Prisma generate 前不被 Prisma client 认识，用原始 SQL 写入
   const rows = await db.$queryRawUnsafe<{ id: string }[]>(
-    `INSERT INTO "runs" ("spider_name", "spider_id", "trigger_type", "overrides")
-     VALUES ($1, $2::uuid, $3, $4::jsonb)
+    `INSERT INTO "runs" ("spider_name", "spider_id", "trigger_type", "overrides", "task_kind")
+     VALUES ($1, $2::uuid, $3, $4::jsonb, $5)
      RETURNING "id"`,
     input.spiderName,
     input.spiderId,
     input.triggerType,
     JSON.stringify(input.overrides ?? {}),
+    input.taskKind ?? null,
   );
   if (!rows[0]) throw new Error('run insert returned no row');
   return { id: rows[0].id };

@@ -21,6 +21,9 @@ export interface SaveItemInput {
   platform?: string | null;
   kind?: string | null;
   sourceId?: string | null;
+  // RFC 0003
+  triggerKind?: string | null;
+  taskId?: string | null;
 }
 
 /**
@@ -43,8 +46,8 @@ export async function save(db: Db, input: SaveItemInput): Promise<{ isNew: boole
     // 利用部分唯一索引做 ON CONFLICT，xmax=0 表示新插入行（xmax!=0 表示已更新行）
     const rows = await db.$queryRawUnsafe<{ is_new: boolean }[]>(
       `INSERT INTO "items"
-         ("run_id","spider","type","url","url_hash","content_hash","payload","platform","kind","source_id")
-       VALUES ($1::uuid,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10)
+         ("run_id","spider","type","url","url_hash","content_hash","payload","platform","kind","source_id","trigger_kind","task_id")
+       VALUES ($1::uuid,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12::uuid)
        ON CONFLICT ("platform","source_id")
          WHERE "platform" IS NOT NULL AND "source_id" IS NOT NULL
        DO UPDATE SET
@@ -55,6 +58,8 @@ export async function save(db: Db, input: SaveItemInput): Promise<{ isNew: boole
          "content_hash" = EXCLUDED."content_hash",
          "payload"      = EXCLUDED."payload",
          "kind"         = EXCLUDED."kind",
+         "trigger_kind" = EXCLUDED."trigger_kind",
+         "task_id"      = EXCLUDED."task_id",
          "fetched_at"   = now()
        RETURNING (xmax = 0) AS is_new`,
       input.runId,
@@ -67,6 +72,8 @@ export async function save(db: Db, input: SaveItemInput): Promise<{ isNew: boole
       input.platform,
       input.kind ?? null,
       input.sourceId,
+      input.triggerKind ?? null,
+      input.taskId ?? null,
     );
     return { isNew: rows[0]?.is_new === true };
   }
@@ -85,6 +92,8 @@ export async function save(db: Db, input: SaveItemInput): Promise<{ isNew: boole
         platform: input.platform ?? null,
         kind: input.kind ?? null,
         sourceId: input.sourceId ?? null,
+        triggerKind: input.triggerKind ?? null,
+        taskId: input.taskId ?? null,
       },
     });
     return { isNew: true };
@@ -111,6 +120,8 @@ export interface ListParams {
   // Phase 5
   platform?: string;
   kind?: string;
+  // RFC 0003
+  triggerKind?: string;
 }
 
 export async function list(
@@ -136,6 +147,7 @@ export async function list(
   if (params.runId) where.runId = params.runId;
   if (params.platform) where.platform = params.platform;
   if (params.kind) where.kind = params.kind;
+  if (params.triggerKind) (where as Record<string, unknown>).trigger_kind = params.triggerKind;
 
   // 简单 ILIKE 全文搜索：URL 或 payload->>'title'
   // Prisma 的 jsonb path filter 不直接支持 ILIKE，所以这条用 $queryRaw 分支
@@ -162,6 +174,10 @@ export async function list(
     if (params.kind) {
       baseFilters.push(`"kind" = $${values.length + 1}`);
       values.push(params.kind);
+    }
+    if (params.triggerKind) {
+      baseFilters.push(`"trigger_kind" = $${values.length + 1}`);
+      values.push(params.triggerKind);
     }
     const extra = baseFilters.length > 0 ? ' AND ' + baseFilters.join(' AND ') : '';
     const dataSql = `SELECT * FROM "items" WHERE ("url" ILIKE $1 OR "payload"->>'title' ILIKE $2)${extra} ORDER BY "fetched_at" DESC LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`;

@@ -8,12 +8,16 @@ import { KIND_SCHEMAS, KNOWN_KINDS } from '@/lib/crawler/kinds';
  * Storage 接口的 Postgres 实现。
  * 由 worker 在 job-handler 里实例化、注入给 runSpider。
  *
- * runId 在构造时绑定，所有写入会关联到这个 run。
+ * runId / spiderId / taskKind 在构造时绑定，所有写入会关联到这个 run。
  */
 export class PostgresStorage implements Storage {
   constructor(
     private readonly db: Db,
     private readonly runId: string,
+    /** RFC 0003：来源 chip 过滤用，同步自 spider.task_kind */
+    private readonly triggerKind: string | null = null,
+    /** RFC 0003：任务 ID（spiders.id），展示来源链接用 */
+    private readonly taskId: string | null = null,
   ) {}
 
   async saveItem(item: CrawlItem): Promise<SaveItemResult> {
@@ -43,6 +47,8 @@ export class PostgresStorage implements Storage {
       platform: item.platform ?? null,
       kind: item.kind ?? null,
       sourceId: item.sourceId ?? null,
+      triggerKind: this.triggerKind,
+      taskId: this.taskId,
     });
   }
 }
