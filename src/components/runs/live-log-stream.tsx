@@ -14,6 +14,8 @@ interface LogLine {
   at: number;
 }
 
+type StreamState = 'connecting' | 'streaming' | 'done';
+
 const levelColor: Record<EventLevel, string> = {
   debug: 'text-muted-foreground',
   info: 'text-foreground',
@@ -44,12 +46,20 @@ function describe(e: CrawlerEvent): string {
 
 export function LiveLogStream({ runId, onDone }: Props) {
   const [lines, setLines] = useState<LogLine[]>([]);
+  const [state, setState] = useState<StreamState>('connecting');
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    setState('connecting');
+    setLines([]);
     const es = new EventSource(`/sse/runs/${runId}/logs`);
 
+    const onReady = () => {
+      setState('streaming');
+    };
+
     const onLog = (ev: MessageEvent<string>) => {
+      setState('streaming');
       const event = JSON.parse(ev.data) as CrawlerEvent;
       setLines((prev) => [
         ...prev.slice(-499),
@@ -61,11 +71,14 @@ export function LiveLogStream({ runId, onDone }: Props) {
         },
       ]);
     };
+
     const onDoneEvent = () => {
+      setState('done');
       onDone?.();
       es.close();
     };
 
+    es.addEventListener('ready', onReady);
     es.addEventListener('log', onLog);
     es.addEventListener('done', onDoneEvent);
 
@@ -86,7 +99,15 @@ export function LiveLogStream({ runId, onDone }: Props) {
       ref={containerRef}
       className="h-96 overflow-y-auto rounded-md border bg-muted/40 p-3 font-mono text-xs"
     >
-      {lines.length === 0 && <div className="text-muted-foreground">等待事件…</div>}
+      {state === 'connecting' && lines.length === 0 && (
+        <div className="text-muted-foreground">连接中…</div>
+      )}
+      {state === 'streaming' && lines.length === 0 && (
+        <div className="text-muted-foreground">等待日志…</div>
+      )}
+      {state === 'done' && lines.length === 0 && (
+        <div className="text-muted-foreground">任务已完成（无日志）</div>
+      )}
       {lines.map((line, i) => (
         <div key={i} className={levelColor[line.level]}>
           <span className="mr-2 text-muted-foreground">
@@ -96,6 +117,9 @@ export function LiveLogStream({ runId, onDone }: Props) {
           {line.text}
         </div>
       ))}
+      {state === 'done' && lines.length > 0 && (
+        <div className="mt-2 border-t pt-2 text-muted-foreground">── 任务结束 ──</div>
+      )}
     </div>
   );
 }
