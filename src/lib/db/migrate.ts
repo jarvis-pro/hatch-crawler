@@ -333,6 +333,34 @@ END $$`,
   // ── url-extractor 内置 spider 下线：删除遗留 spider 行（关联 runs 级联清理；
   //    items.run_id 由 ON DELETE SET NULL 保留）。幂等：已无对应行时 0 删除。
   `DELETE FROM "spiders" WHERE "type" = 'url-extractor'`,
+
+  // ── items.id 从 serial 改为 uuid ─────────────────────────────────────────
+  // 动机：避免自增数对外暴露内容总量。items.id 当前没有任何外键引用，
+  //   切换是安全的；老的 serial 值不保留（外部如果靠这个数 id 引用，会失效）。
+  // 幂等：通过 information_schema.columns 检测当前 id 列的数据类型，仅在
+  //   仍是整数类型（integer/bigint）时执行一次 ALTER；之后所有启动都是 no-op。
+  `DO $$
+    DECLARE
+      cur_type text;
+    BEGIN
+      SELECT data_type INTO cur_type
+      FROM information_schema.columns
+      WHERE table_name = 'items' AND column_name = 'id';
+
+      IF cur_type IN ('integer', 'bigint') THEN
+        -- 1. 删除旧 PK 约束（serial 默认名是 items_pkey）
+        ALTER TABLE "items" DROP CONSTRAINT IF EXISTS "items_pkey";
+        -- 2. 释放并删除关联序列（autoincrement 来源）
+        ALTER TABLE "items" ALTER COLUMN "id" DROP DEFAULT;
+        DROP SEQUENCE IF EXISTS "items_id_seq";
+        -- 3. 直接转换列类型为 uuid，并为每行生成新值
+        --    USING gen_random_uuid() 在 ALTER COLUMN TYPE 时按行调用一次
+        ALTER TABLE "items" ALTER COLUMN "id" TYPE uuid USING gen_random_uuid();
+        -- 4. 设置默认值与主键
+        ALTER TABLE "items" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();
+        ALTER TABLE "items" ADD PRIMARY KEY ("id");
+      END IF;
+    END $$`,
 ];
 
 export interface MigrateResult {

@@ -102,7 +102,7 @@ export interface RecordOutcomeInput {
   jobId: string;
   canonicalUrl: string;
   outcome:
-    | { kind: 'succeeded'; itemId: number }
+    | { kind: 'succeeded'; itemId: string }
     | { kind: 'failed'; errorCode: string; errorMessage: string };
 }
 

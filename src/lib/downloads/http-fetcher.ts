@@ -13,7 +13,7 @@ import { type FileStorage, buildAttachmentPath, type PutResult } from '@/lib/sto
 export interface HttpFetcherInput {
   attachmentId: string;
   spider: string;
-  itemId: number;
+  itemId: string;
   sourceUrl: string;
   /** 可选 hint：如果 spider 已知文件后缀，传过来；否则从 URL / Content-Type 嗅 */
   extHint?: string;

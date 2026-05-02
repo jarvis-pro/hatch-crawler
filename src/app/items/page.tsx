@@ -155,7 +155,7 @@ export default function ItemsPage() {
   const [kind, setKind] = useState('');
   const [page, setPage] = useState(1);
   const [exporting, setExporting] = useState(false);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const queryClient = useQueryClient();
@@ -201,7 +201,7 @@ export default function ItemsPage() {
     });
   }
 
-  function toggleOne(id: number) {
+  function toggleOne(id: string) {
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -212,7 +212,7 @@ export default function ItemsPage() {
 
   // ── 批量删除 ──────────────────────────────────────────────────────────────
   const deleteMutation = useMutation({
-    mutationFn: (ids: number[]) => api.delete<{ deleted: number }>('/api/items', { ids }),
+    mutationFn: (ids: string[]) => api.delete<{ deleted: number }>('/api/items', { ids }),
     onSuccess: (res) => {
       toast.success(`已删除 ${res.deleted} 条条目`);
       setSelected(new Set());

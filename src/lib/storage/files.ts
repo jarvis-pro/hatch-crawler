@@ -137,7 +137,7 @@ const SAFE_EXT = new Set([
 
 export function buildAttachmentPath(args: {
   spider: string;
-  itemId: number;
+  itemId: string;
   attachmentId: string;
   ext: string;
 }): string {
@@ -149,10 +149,9 @@ export function buildAttachmentPath(args: {
   if (!/^[A-Za-z0-9_-]+$/.test(args.spider)) {
     throw new Error(`invalid spider name for storage path: ${args.spider}`);
   }
-  return path.posix.join(
-    'downloads',
-    args.spider,
-    String(args.itemId),
-    `${args.attachmentId}.${ext}`,
-  );
+  // itemId 是 uuid 字符串，安全字符 [0-9a-f-]，可直接作路径片段
+  if (!/^[0-9a-fA-F-]+$/.test(args.itemId)) {
+    throw new Error(`invalid item id for storage path: ${args.itemId}`);
+  }
+  return path.posix.join('downloads', args.spider, args.itemId, `${args.attachmentId}.${ext}`);
 }

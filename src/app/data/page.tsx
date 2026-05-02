@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { RefreshCw, Layers, Link2, type LucideIcon } from 'lucide-react';
+import { RefreshCw, Layers, Link2, ImageOff, type LucideIcon } from 'lucide-react';
 import type { Item } from '@/lib/db';
 import { api, type ListResult } from '@/lib/api-client';
 import { Badge } from '@/components/ui/badge';
@@ -11,14 +11,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 
 
 const PAGE_SIZE = 50;
@@ -167,7 +159,7 @@ export default function DataPage() {
   const [triggerKind, setTriggerKind] = useState('');
   const [page, setPage] = useState(1);
   const [exporting, setExporting] = useState(false);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const queryClient = useQueryClient();
@@ -214,7 +206,7 @@ export default function DataPage() {
     });
   }
 
-  function toggleOne(id: number) {
+  function toggleOne(id: string) {
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -225,7 +217,7 @@ export default function DataPage() {
 
   // ── 批量删除 ──────────────────────────────────────────────────────────────
   const deleteMutation = useMutation({
-    mutationFn: (ids: number[]) => api.delete<{ deleted: number }>('/api/items', { ids }),
+    mutationFn: (ids: string[]) => api.delete<{ deleted: number }>('/api/items', { ids }),
     onSuccess: (res) => {
       toast.success(`已删除 ${res.deleted} 条条目`);
       setSelected(new Set());
@@ -399,95 +391,39 @@ export default function DataPage() {
 
         <Card>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">
-                    {/* 全选复选框 */}
-                    <input
-                      type="checkbox"
-                      checked={allOnPageSelected}
-                      onChange={toggleSelectAll}
-                      className="h-4 w-4 cursor-pointer rounded border-gray-300"
-                      aria-label="全选当前页"
-                    />
-                  </TableHead>
-                  <TableHead>#</TableHead>
-                  <TableHead>平台 / Spider</TableHead>
-                  <TableHead>类型</TableHead>
-                  <TableHead>Title / URL</TableHead>
-                  <TableHead>抓取时间</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground">
-                      加载中…
-                    </TableCell>
-                  </TableRow>
-                )}
-                {data?.data.length === 0 && !isLoading && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground">
-                      还没有抓取到任何条目。
-                    </TableCell>
-                  </TableRow>
-                )}
-                {data?.data.map((it) => {
-                  const title = (it.payload as { title?: string } | null)?.title ?? null;
-                  const kindLabel = it.kind ? (KIND_LABELS[it.kind] ?? it.kind) : null;
-                  const kindColor = it.kind ? (KIND_COLORS[it.kind] ?? '') : '';
-                  const isChecked = selected.has(it.id);
-                  return (
-                    <TableRow key={it.id} className={isChecked ? 'bg-muted/40' : undefined}>
-                      <TableCell>
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => toggleOne(it.id)}
-                          className="h-4 w-4 cursor-pointer rounded border-gray-300"
-                          aria-label={`选择条目 ${it.id}`}
-                        />
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">{it.id}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-0.5">
-                          {it.platform && (
-                            <span className="text-xs font-medium text-muted-foreground">
-                              {it.platform}
-                            </span>
-                          )}
-                          <span className="text-xs text-muted-foreground">{it.spider}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {kindLabel ? (
-                          <span
-                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${kindColor}`}
-                          >
-                            {kindLabel}
-                          </span>
-                        ) : (
-                          <Badge variant="outline">{it.type}</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="max-w-sm">
-                        <Link
-                          href={`/data/${String(it.id)}`}
-                          className="line-clamp-1 hover:underline"
-                        >
-                          {title ?? it.url}
-                        </Link>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {new Date(it.fetchedAt).toLocaleString()}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+            {/* 全选条 */}
+            {data && data.data.length > 0 && (
+              <div className="flex items-center gap-3 border-b px-4 py-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={allOnPageSelected}
+                  onChange={toggleSelectAll}
+                  className="h-4 w-4 cursor-pointer rounded border-gray-300"
+                  aria-label="全选当前页"
+                />
+                <span>全选当前页</span>
+              </div>
+            )}
+
+            {isLoading && (
+              <div className="px-6 py-12 text-center text-sm text-muted-foreground">加载中…</div>
+            )}
+            {data?.data.length === 0 && !isLoading && (
+              <div className="px-6 py-12 text-center text-sm text-muted-foreground">
+                还没有抓取到任何条目。
+              </div>
+            )}
+
+            <ul className="divide-y">
+              {data?.data.map((it) => (
+                <DataRow
+                  key={it.id}
+                  item={it}
+                  selected={selected.has(it.id)}
+                  onToggle={() => toggleOne(it.id)}
+                />
+              ))}
+            </ul>
           </CardContent>
         </Card>
 
@@ -536,5 +472,131 @@ export default function DataPage() {
         onClose={() => setShowDeleteConfirm(false)}
       />
     </>
+  );
+}
+
+// ── 单行卡片 ──────────────────────────────────────────────────────────────────
+
+interface DataRowProps {
+  item: Item;
+  selected: boolean;
+  onToggle: () => void;
+}
+
+/** 从 payload 里挑封面：优先 thumbnail，其次第一张 image */
+function pickCover(item: Item): string | null {
+  const p = item.payload as Record<string, unknown> | null;
+  if (!p) return null;
+  const media = p.media;
+  if (!Array.isArray(media)) return null;
+  const thumb = media.find(
+    (m): m is { kind?: string; url?: string } =>
+      typeof m === 'object' && m !== null && (m as { kind?: string }).kind === 'thumbnail',
+  );
+  if (thumb?.url) return thumb.url;
+  const firstImage = media.find(
+    (m): m is { kind?: string; url?: string } =>
+      typeof m === 'object' && m !== null && typeof (m as { url?: string }).url === 'string',
+  );
+  return firstImage?.url ?? null;
+}
+
+function getAuthorName(item: Item): string | null {
+  const p = item.payload as Record<string, unknown> | null;
+  const a = p?.author;
+  if (typeof a === 'string') return a;
+  if (a && typeof a === 'object') {
+    return ((a as Record<string, unknown>).name as string | undefined) ?? null;
+  }
+  return null;
+}
+
+function DataRow({ item, selected, onToggle }: DataRowProps) {
+  const payload = (item.payload ?? {}) as Record<string, unknown>;
+  const title = (payload.title as string | undefined) ?? null;
+  const description = (payload.description as string | undefined) ?? null;
+  const publishedAt = payload.publishedAt as string | undefined;
+  const author = getAuthorName(item);
+  const cover = pickCover(item);
+  const kindLabel = item.kind ? (KIND_LABELS[item.kind] ?? item.kind) : null;
+  const kindColor = item.kind ? (KIND_COLORS[item.kind] ?? '') : '';
+
+  return (
+    <li
+      className={`flex gap-3 px-4 py-3 transition-colors hover:bg-muted/30 ${
+        selected ? 'bg-muted/40' : ''
+      }`}
+    >
+      {/* 复选框 */}
+      <div className="flex shrink-0 items-start pt-1">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggle}
+          className="h-4 w-4 cursor-pointer rounded border-gray-300"
+          aria-label="选择条目"
+        />
+      </div>
+
+      {/* 封面（16:9，固定宽 160px） */}
+      <Link
+        href={`/data/${item.id}`}
+        className="relative aspect-video w-40 shrink-0 overflow-hidden rounded-md bg-muted"
+      >
+        {cover ? (
+          <img
+            src={cover}
+            alt=""
+            loading="lazy"
+            className="h-full w-full object-cover"
+            onError={(e) => {
+              // 图加载失败时折叠 src，让占位图显示
+              (e.currentTarget as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+            <ImageOff className="h-6 w-6" />
+          </div>
+        )}
+      </Link>
+
+      {/* 文字区 */}
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        {/* 标题 + 类型 + 平台 */}
+        <div className="flex items-start gap-2">
+          <Link href={`/data/${item.id}`} className="min-w-0 flex-1 hover:underline">
+            <p className="line-clamp-2 text-sm font-medium leading-snug">{title ?? item.url}</p>
+          </Link>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {kindLabel && (
+              <span
+                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${kindColor}`}
+              >
+                {kindLabel}
+              </span>
+            )}
+            {item.platform && (
+              <Badge variant="outline" className="text-xs">
+                {item.platform}
+              </Badge>
+            )}
+          </div>
+        </div>
+
+        {/* 简介 */}
+        {description && (
+          <p className="line-clamp-2 text-xs text-muted-foreground">{description}</p>
+        )}
+
+        {/* 元数据底栏 */}
+        <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-0.5 pt-1 text-xs text-muted-foreground">
+          {author && <span>{author}</span>}
+          {publishedAt && <span>{new Date(publishedAt).toLocaleDateString()}</span>}
+          <span className="text-muted-foreground/70">{item.spider}</span>
+          <span className="ml-auto">抓取于 {new Date(item.fetchedAt).toLocaleString()}</span>
+        </div>
+      </div>
+    </li>
   );
 }

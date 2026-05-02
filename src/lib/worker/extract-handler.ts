@@ -153,7 +153,7 @@ async function saveExtractedItem(
   extractJobId: string,
   _originalUrl: string,
   metadata: VideoMetadata,
-): Promise<{ itemId: number; isNew: boolean }> {
+): Promise<{ itemId: string; isNew: boolean }> {
   const { isNew, id } = await itemRepo.save(db, {
     runId: null,
     spider: 'extract',

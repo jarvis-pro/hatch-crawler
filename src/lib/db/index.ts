@@ -123,8 +123,8 @@ export interface ExtractUrlResult {
   status: 'pending' | 'succeeded' | 'failed';
   errorCode?: string;
   errorMessage?: string;
-  /** 写入成功时的 items.id */
-  itemId?: number;
+  /** 写入成功时的 items.id（UUID 字符串） */
+  itemId?: string;
   finishedAt?: string;
 }
 

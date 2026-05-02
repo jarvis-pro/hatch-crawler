@@ -22,7 +22,7 @@ import { type FileStorage, buildAttachmentPath } from '@/lib/storage/files';
 export interface YtdlpFetcherInput {
   attachmentId: string;
   spider: string;
-  itemId: number;
+  itemId: string;
   sourceUrl: string; // YouTube watch URL（或其它 yt-dlp 支持的 URL）
   /** true → 仅提取音频，输出 mp3；默认 false → 下载最佳画质视频 */
   audioOnly?: boolean;

@@ -31,12 +31,12 @@ export interface SaveItemInput {
 export interface SaveItemOutput {
   isNew: boolean;
   /**
-   * 写入或命中的 items.id。
+   * 写入或命中的 items.id（UUID 字符串）。
    *  - upsert 路径（platform+sourceId）：始终返回 id
    *  - try/catch 路径（仅 spider+url+contentHash 唯一）：仅 isNew=true 时返回 id；
    *    P2002 冲突分支没有 RETURNING，调用方需要时再二次查
    */
-  id?: number;
+  id?: string;
 }
 
 /**
@@ -57,9 +57,7 @@ export async function save(db: Db, input: SaveItemInput): Promise<SaveItemOutput
   // ── 有来源 ID：走 upsert，用 platform+sourceId 去重 ──────────────────────────
   if (input.platform && input.sourceId) {
     // 利用部分唯一索引做 ON CONFLICT，xmax=0 表示新插入行（xmax!=0 表示已更新行）
-    // 注：$queryRawUnsafe 在某些 Prisma 版本下会把 PG 整数列回传为 JS BigInt，
-    //    下游 JSON.stringify 直接炸；统一在出口处 Number(...) 强转回常规 number。
-    const rows = await db.$queryRawUnsafe<{ is_new: boolean; id: number | bigint }[]>(
+    const rows = await db.$queryRawUnsafe<{ is_new: boolean; id: string }[]>(
       `INSERT INTO "items"
          ("run_id","spider","type","url","url_hash","content_hash","payload","platform","kind","source_id","trigger_kind","task_id","extract_job_id")
        VALUES ($1::uuid,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12::uuid,$13::uuid)
@@ -92,16 +90,15 @@ export async function save(db: Db, input: SaveItemInput): Promise<SaveItemOutput
       input.taskId ?? null,
       input.extractJobId ?? null,
     );
-    const rawId = rows[0]?.id;
     return {
       isNew: rows[0]?.is_new === true,
-      id: rawId !== undefined ? Number(rawId) : undefined,
+      id: rows[0]?.id,
     };
   }
 
   // ── 无来源 ID：原有 try/catch 路径 ───────────────────────────────────────────
   try {
-    const created = (await (db.item.create as (args: unknown) => Promise<{ id: number }>)({
+    const created = (await (db.item.create as (args: unknown) => Promise<{ id: string }>)({
       data: {
         runId: input.runId,
         spider: input.spider,
@@ -118,7 +115,7 @@ export async function save(db: Db, input: SaveItemInput): Promise<SaveItemOutput
         extractJobId: input.extractJobId ?? null,
       },
       select: { id: true },
-    })) as { id: number };
+    })) as { id: string };
     return { isNew: true, id: created.id };
   } catch (err) {
     if (
@@ -230,7 +227,7 @@ export async function list(
   return { data: rows.map(shape), total, page, pageSize };
 }
 
-export async function getById(db: Db, id: number): Promise<Item | null> {
+export async function getById(db: Db, id: string): Promise<Item | null> {
   const row = await db.item.findUnique({ where: { id } });
   return row ? shape(row) : null;
 }
@@ -241,11 +238,11 @@ export async function getById(db: Db, id: number): Promise<Item | null> {
  */
 export async function patchPayload(
   db: Db,
-  id: number,
+  id: string,
   patch: Record<string, unknown>,
 ): Promise<void> {
   await db.$executeRawUnsafe(
-    `UPDATE "items" SET "payload" = "payload" || $1::jsonb WHERE "id" = $2`,
+    `UPDATE "items" SET "payload" = "payload" || $1::jsonb WHERE "id" = $2::uuid`,
     JSON.stringify(patch),
     id,
   );
@@ -255,7 +252,7 @@ export async function patchPayload(
  * 批量删除指定 id 列表的条目。
  * 返回实际删除行数。
  */
-export async function deleteMany(db: Db, ids: number[]): Promise<number> {
+export async function deleteMany(db: Db, ids: string[]): Promise<number> {
   if (ids.length === 0) return 0;
   const result = await db.item.deleteMany({ where: { id: { in: ids } } });
   return result.count;

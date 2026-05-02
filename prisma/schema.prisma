@@ -134,7 +134,9 @@ model Event {
 // ──────────────────────────────────────────────────────────
 
 model Item {
-  id           Int      @id @default(autoincrement())
+  /// UUID 主键。改用 uuid 是为了不通过自增数泄漏内容总量；
+  /// 历史 serial 列已通过迁移替换为 uuid，原 id 不再保留。
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   runId        String?  @map("run_id") @db.Uuid
   spider       String   @db.VarChar(64)
   type         String   @db.VarChar(32)

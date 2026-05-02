@@ -36,9 +36,11 @@ export async function GET(req: Request): Promise<Response> {
 
 /**
  * DELETE /api/items
- * Body: { ids: number[] }
+ * Body: { ids: string[] }（UUID 字符串列表）
  * 批量删除指定 id 的条目。
  */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function DELETE(req: Request): Promise<Response> {
   try {
     let body: unknown;
@@ -56,9 +58,9 @@ export async function DELETE(req: Request): Promise<Response> {
       return fail('VALIDATION_ERROR', 'body must contain ids array');
     }
 
-    const ids = ((body as Record<string, unknown>).ids as unknown[])
-      .map(Number)
-      .filter((n) => Number.isFinite(n) && n > 0);
+    const ids = ((body as Record<string, unknown>).ids as unknown[]).filter(
+      (v): v is string => typeof v === 'string' && UUID_RE.test(v),
+    );
 
     if (ids.length === 0) return fail('VALIDATION_ERROR', 'ids array is empty or invalid');
 

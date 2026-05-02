@@ -38,14 +38,15 @@ const querySchema = z.object({
  * - ytdlp 模式：spawn yt-dlp 下载到临时文件，完成后流式返回，结束后删除临时文件。
  *   断开连接（request.signal abort）时自动 kill yt-dlp 进程。
  */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function GET(req: Request, { params }: Ctx): Promise<Response> {
   try {
     const { id } = await params;
-    const num = Number(id);
-    if (!Number.isFinite(num)) return fail('NOT_FOUND', `bad item id: ${id}`);
+    if (!UUID_RE.test(id)) return fail('NOT_FOUND', `bad item id: ${id}`);
 
     const db = getDb(env.databaseUrl);
-    const item = await itemRepo.getById(db, num);
+    const item = await itemRepo.getById(db, id);
     if (!item) return fail('NOT_FOUND', `item not found: ${id}`);
 
     const rawQuery = Object.fromEntries(new URL(req.url).searchParams.entries());
