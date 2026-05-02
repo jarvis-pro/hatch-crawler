@@ -3,15 +3,17 @@ import {
   getBoss,
   getDb,
   QUEUE_CRAWL,
+  QUEUE_EXTRACT,
   runRepo,
   spiderRepo,
   settingRepo,
   SETTINGS_KEYS,
   RunStatus,
 } from '@/lib/db';
-import type { CrawlJobData } from '@/lib/db';
+import type { CrawlJobData, ExtractJobData } from '@/lib/db';
 import { env } from '../env';
 import { handleCrawlJob } from './job-handler';
+import { handleExtractJob } from './extract-handler';
 import { subscribe } from './event-bus';
 
 /**
@@ -136,6 +138,13 @@ export async function startWorker(): Promise<void> {
     } finally {
       state.abortControllers.delete(job.data.runId);
     }
+  });
+
+  // 3b) 订阅 extract 队列：每条 supported URL 一个 job，与 crawl 并行
+  await boss.createQueue(QUEUE_EXTRACT);
+  await boss.work<ExtractJobData>(QUEUE_EXTRACT, async ([job]) => {
+    if (!job) return;
+    await handleExtractJob(db, job.data);
   });
 
   // 4) 注册所有启用 Spider 的 cron 调度

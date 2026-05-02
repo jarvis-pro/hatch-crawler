@@ -2,7 +2,7 @@
  * Extractor 抽象层：把"按 URL 抽取单个视频"的平台知识从 Spider 中剥离。
  *
  * 设计意图：
- *  - Spider（url-extractor）只做调度：拿 URL → 调注册表 → emit 结果
+ *  - extract worker 只做调度：拿 URL → 走 inspect 路由到对应 extractor → 写库
  *  - Extractor 封装平台知识：URL 匹配、URL 标准化、ID 提取、HTML/API 解析
  *  - 新增平台 = 新建一个 Extractor + 在 registry 注册一行，零 if-else
  *

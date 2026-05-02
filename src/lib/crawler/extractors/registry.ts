@@ -30,7 +30,7 @@ export interface DispatchResult {
  *  - URL 格式非法（new URL 抛错）→ 返回 null
  *  - 没有 extractor 认这个 host → 返回 null
  *
- * 调用方（UrlExtractorSpider）拿到 null 时应当 ctx.log warn 并跳过。
+ * 调用方（/api/extract → extract worker）：null 直接归类为 unsupported，不入队。
  */
 export function dispatch(rawUrl: string): DispatchResult | null {
   let url: URL;

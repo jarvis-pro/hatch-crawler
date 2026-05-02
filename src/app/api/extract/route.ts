@@ -1,23 +1,26 @@
 import 'server-only';
 import { z } from 'zod';
-import { ensureBuiltinSpiders, getBoss, getDb, QUEUE_CRAWL, runRepo, spiderRepo } from '@/lib/db';
+import { extractJobRepo, getBoss, getDb, QUEUE_EXTRACT, type ExtractUrlResult } from '@/lib/db';
+import type { ExtractJobData } from '@/lib/db';
 import { env } from '@/lib/env';
 import { fail, failInternal, failValidation, ok } from '@/lib/api/response';
+import { inspect, type InspectResult } from '@/lib/crawler/extractors/inspect';
 
 /**
  * POST /api/extract
  *
- * 按用户提交的 URL 列表创建一次"按链接抓取"运行。
- * 内部走 url-extractor spider —— 一个 run 对应一批 URL，每条 URL 产出一条 video item。
+ * 用户提交一批 URL，按 inspect 拆成三类：
+ *   - supported   → 落入 extract_jobs.results，下发到 QUEUE_EXTRACT
+ *   - unsupported → 进 rejected，原因 'unsupported_host'
+ *   - invalid     → 进 rejected，原因 'malformed_url' / 'empty'
+ *
+ * 与旧版差异：
+ *   - 不再创建 runs / 走 url-extractor spider
+ *   - 不支持的域名直接拒绝（前端也提前过滤），不再下发执行
+ *   - 返回 jobId 替代 runId；前端用 GET /api/extract-jobs/:id 轮询进度
  *
  * 入参：{ urls: string[] }（1..50 条）
- * 返回：{ runId, accepted, rejected }
- *   - rejected 包含本批中"格式非法（new URL 抛错）"的字符串；这些不进 run。
- *   - "格式合法但 host 不被支持" 的 URL 仍然会进 run，由 spider 在 parse 阶段
- *     ctx.log error 跳过，便于用户从 events 表回溯。
- *
- * 进度：前端订阅 /sse/runs/:runId/logs 实时看；
- * 结果：跑完后 GET /api/items?runId=:runId。
+ * 返回：{ jobId, accepted, rejected }
  */
 
 const MAX_URLS_PER_REQUEST = 50;
@@ -29,13 +32,10 @@ const schema = z.object({
     .max(MAX_URLS_PER_REQUEST, `urls 最多 ${MAX_URLS_PER_REQUEST} 条`),
 });
 
-function isParseableUrl(s: string): boolean {
-  try {
-    new URL(s);
-    return true;
-  } catch {
-    return false;
-  }
+interface RejectedEntry {
+  url: string;
+  reason: 'malformed_url' | 'unsupported_host' | 'duplicate';
+  host?: string;
 }
 
 export async function POST(req: Request): Promise<Response> {
@@ -46,58 +46,86 @@ export async function POST(req: Request): Promise<Response> {
     const parsed = schema.safeParse(body);
     if (!parsed.success) return failValidation(parsed.error);
 
-    // trim + 去重，保持原顺序
+    // ── 1. 去重 + inspect 分类 ─────────────────────────────────────────────
     const seen = new Set<string>();
-    const trimmed = parsed.data.urls
-      .map((u) => u.trim())
-      .filter((u) => {
-        if (u.length === 0 || seen.has(u)) return false;
-        seen.add(u);
-        return true;
+    const submittedUrls: string[] = [];
+    const rejected: RejectedEntry[] = [];
+    const acceptedResults: Record<string, ExtractUrlResult> = {};
+    const acceptedQueue: Array<Pick<ExtractJobData, 'originalUrl' | 'canonicalUrl' | 'platform'>> =
+      [];
+
+    for (const raw of parsed.data.urls) {
+      const trimmed = raw.trim();
+      if (trimmed.length === 0) {
+        rejected.push({ url: raw, reason: 'malformed_url' });
+        continue;
+      }
+      if (seen.has(trimmed)) {
+        rejected.push({ url: trimmed, reason: 'duplicate' });
+        continue;
+      }
+      seen.add(trimmed);
+      submittedUrls.push(trimmed);
+
+      const r: InspectResult = inspect(trimmed);
+      if (r.kind === 'invalid') {
+        rejected.push({ url: trimmed, reason: 'malformed_url' });
+        continue;
+      }
+      if (r.kind === 'unsupported') {
+        rejected.push({ url: trimmed, reason: 'unsupported_host', host: r.host });
+        continue;
+      }
+
+      // canonical URL 也要去重——多个不同形态的同一视频应只入队一次
+      if (acceptedResults[r.canonicalUrl]) {
+        rejected.push({ url: trimmed, reason: 'duplicate' });
+        continue;
+      }
+
+      acceptedResults[r.canonicalUrl] = {
+        originalUrl: trimmed,
+        platform: r.platform,
+        status: 'pending',
+      };
+      acceptedQueue.push({
+        originalUrl: trimmed,
+        canonicalUrl: r.canonicalUrl,
+        platform: r.platform,
       });
-
-    const accepted: string[] = [];
-    const rejected: string[] = [];
-    for (const u of trimmed) {
-      (isParseableUrl(u) ? accepted : rejected).push(u);
     }
 
-    if (accepted.length === 0) {
-      return fail('VALIDATION_ERROR', '所有 URL 格式都无法解析', { rejected });
+    if (Object.keys(acceptedResults).length === 0) {
+      return fail('VALIDATION_ERROR', '没有任何 URL 命中支持的平台', {
+        rejected,
+      });
     }
 
+    // ── 2. 创建 extract_job + 批量下发到 pg-boss ───────────────────────────
     const db = getDb(env.databaseUrl);
-
-    // ensureBuiltinSpiders 在 instrumentation 启动时已执行，但本地开发首次访问
-    // 偶尔早于 instrumentation；保险起见再幂等执行一次（命中存在则零写入）。
-    await ensureBuiltinSpiders(db);
-    const spider = await spiderRepo.getByType(db, 'url-extractor');
-    if (!spider) {
-      return fail('INTERNAL_ERROR', 'url-extractor spider 未初始化（请重启服务）');
-    }
-    if (!spider.enabled) return fail('CONFLICT', 'url-extractor 当前为停用状态');
-
-    const overrides: Record<string, unknown> = { urls: accepted };
-
-    const run = await runRepo.create(db, {
-      spiderId: spider.id,
-      spiderName: spider.name,
-      triggerType: 'manual',
-      overrides,
-      taskKind: spider.taskKind,
+    const job = await extractJobRepo.create(db, {
+      submittedUrls,
+      results: acceptedResults,
     });
 
     const { boss, ready } = getBoss(env.databaseUrl);
     await ready;
-    await boss.send(QUEUE_CRAWL, {
-      runId: run.id,
-      spiderId: spider.id,
-      overrides,
-    });
+    await boss.createQueue(QUEUE_EXTRACT);
+
+    await Promise.all(
+      acceptedQueue.map((q) =>
+        boss.send(QUEUE_EXTRACT, {
+          extractJobId: job.id,
+          originalUrl: q.originalUrl,
+          canonicalUrl: q.canonicalUrl,
+          platform: q.platform,
+        } satisfies ExtractJobData),
+      ),
+    );
 
     return ok({
-      runId: run.id,
-      accepted: accepted.length,
+      jobId: job.id,
+      accepted: acceptedQueue.length,
       rejected,
     });
   } catch (err) {
