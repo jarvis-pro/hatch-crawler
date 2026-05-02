@@ -84,6 +84,7 @@ export async function POST(req: Request): Promise<Response> {
       spiderName: spider.name,
       triggerType: 'manual',
       overrides,
+      taskKind: spider.taskKind,
     });
 
     const { boss, ready } = getBoss(env.databaseUrl);

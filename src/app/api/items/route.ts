@@ -12,6 +12,7 @@ export async function GET(req: Request): Promise<Response> {
     const q = url.searchParams.get('q') ?? undefined;
     const platform = url.searchParams.get('platform') ?? undefined;
     const kind = url.searchParams.get('kind') ?? undefined;
+    const triggerKind = url.searchParams.get('triggerKind') ?? undefined;
     const page = Number(url.searchParams.get('page') ?? '1');
     const pageSize = Number(url.searchParams.get('pageSize') ?? '20');
 
@@ -23,6 +24,7 @@ export async function GET(req: Request): Promise<Response> {
       q,
       platform,
       kind,
+      triggerKind,
       page: Number.isFinite(page) ? page : 1,
       pageSize: Number.isFinite(pageSize) ? pageSize : 20,
     });

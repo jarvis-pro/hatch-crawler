@@ -23,6 +23,8 @@ const updateSchema = z.object({
   defaultParams: z.record(z.unknown()).default({}),
   // 平台标记（youtube / bilibili 等），与 SPIDER_REGISTRY.platform 对齐
   platform: z.string().max(32).nullish(),
+  /** RFC 0003：subscription / batch / extract；缺省时按规则自动推断 */
+  taskKind: z.enum(['subscription', 'batch', 'extract']).nullish(),
 });
 
 interface RouteContext {

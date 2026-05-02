@@ -20,12 +20,18 @@ const createSchema = z.object({
   cronSchedule: z.string().nullish(),
   defaultParams: z.record(z.unknown()).default({}),
   platform: z.string().max(32).nullish(),
+  /** RFC 0003：subscription / batch / extract；缺省时按规则自动推断 */
+  taskKind: z.enum(['subscription', 'batch', 'extract']).nullish(),
 });
 
-export async function GET(): Promise<Response> {
+export async function GET(req: Request): Promise<Response> {
   try {
+    const url = new URL(req.url);
+    const taskKind = url.searchParams.get('taskKind') ?? undefined;
     const db = getDb(env.databaseUrl);
-    const data = await spiderRepo.listAll(db);
+    const data = taskKind
+      ? await spiderRepo.listByTaskKind(db, taskKind)
+      : await spiderRepo.listAll(db);
     return ok(data);
   } catch (err) {
     return failInternal(err);

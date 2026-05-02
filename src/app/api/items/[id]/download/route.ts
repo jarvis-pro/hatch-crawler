@@ -54,6 +54,13 @@ export async function GET(req: Request, { params }: Ctx): Promise<Response> {
 
     const { url: sourceUrl, fetcher, audioOnly, quality } = parsed.data;
 
+    // SSRF 防护：sourceUrl 必须来自 item.payload 中的候选 URL 集合，
+    // 拒绝任意外部 URL 传入（内网探测 / SSRF 攻击）。
+    const allowed = extractAllowedUrls(item.payload as Record<string, unknown>);
+    if (!allowed.has(sourceUrl)) {
+      return fail('VALIDATION_ERROR', 'url not in item payload candidates');
+    }
+
     if (fetcher === 'ytdlp') {
       return streamYtdlp(sourceUrl, req.signal, { audioOnly, quality });
     }
@@ -61,6 +68,44 @@ export async function GET(req: Request, { params }: Ctx): Promise<Response> {
   } catch (err) {
     return failInternal(err);
   }
+}
+
+/**
+ * 从 item.payload 提取允许下载的 URL 候选集。
+ * 包含：payload.url、payload.media[].url、payload.videoUrl 等常见字段。
+ */
+function extractAllowedUrls(payload: Record<string, unknown>): Set<string> {
+  const urls = new Set<string>();
+  const add = (v: unknown) => {
+    if (typeof v === 'string' && v.startsWith('http')) urls.add(v);
+  };
+
+  add(payload.url);
+  add(payload.videoUrl);
+  add(payload.audioUrl);
+  add(payload.downloadUrl);
+
+  const media = payload.media;
+  if (Array.isArray(media)) {
+    for (const m of media) {
+      if (m && typeof m === 'object') {
+        add((m as Record<string, unknown>).url);
+      }
+    }
+  }
+
+  // videoFormats 里的 URL
+  const vf = payload.videoFormats;
+  if (vf && typeof vf === 'object') {
+    const formats = (vf as Record<string, unknown>).formats;
+    if (Array.isArray(formats)) {
+      for (const f of formats) {
+        if (f && typeof f === 'object') add((f as Record<string, unknown>).url);
+      }
+    }
+  }
+
+  return urls;
 }
 
 /** HTTP 直链：got stream → browser response */
