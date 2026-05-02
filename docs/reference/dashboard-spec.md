@@ -1,4 +1,4 @@
-# 看板交互规范
+# 看板规格
 
 > 描述每个页面的布局、组件、交互行为、用户旅程。
 > Next.js 15 App Router，Tailwind + shadcn/ui，TanStack Query。
@@ -10,14 +10,14 @@
 
 ```
 /                       → 重定向到 /dashboard
-/dashboard              → 概览（实时监控）
+/dashboard              → 概览（统计 + 趋势 + breakdown + 最近 Run）
 /spiders                → Spider 列表
-/spiders/[name]         → Spider 详情 + 配置
+/spiders/[id]           → Spider 详情 + 配置（[name] 路由实际承载 spiders.id UUID）
 /runs                   → 历史 Run 列表
 /runs/[id]              → 单个 Run 详情（含实时日志）
-/items                  → 抓取结果浏览/搜索
-/items/[id]             → 单条 Item 详情
-/settings               → 全局设置（代理池/UA 池/默认参数）
+/items                  → 抓取结果浏览 / 搜索 / 平台与 kind 筛选
+/items/[id]             → 单条 Item 详情（视频含下载菜单）
+/settings               → 全局设置（凭据 / 代理 / 通知 / 下载 / UA / 默认参数）
 ```
 
 ## 全局布局
@@ -26,248 +26,247 @@
 ┌──────────────────────────────────────────────────────────┐
 │  Sidebar               │  Topbar                          │
 │  ─────────             │  ─────────────────────────────── │
-│  ▣ Dashboard           │  Page title         [⏵ New Run] │
-│  ▢ Spiders             │  ─────────────────────────────── │
-│  ▢ Runs                │                                  │
-│  ▢ Items               │            Page content          │
-│  ▢ Settings            │                                  │
-│                        │                                  │
+│  ▣ 仪表盘              │  Page title         [+ 新建运行] │
+│  ▢ 爬虫                │  ─────────────────────────────── │
+│  ▢ 任务                │                                  │
+│  ▢ 数据                │            Page content          │
+│  ▢ 设置                │                                  │
 └────────────────────────┴──────────────────────────────────┘
 ```
 
-- 左侧 64px 折叠 / 240px 展开 Sidebar
-- 顶部 56px Topbar，主要放页面标题与"新建运行"按钮
-- 右上角小按钮：DB 健康度指示（绿灯=Postgres 可达、红灯=不可达）
+- 左侧 240px Sidebar（`src/components/nav/sidebar.tsx`）
+- 顶部 Topbar（`src/components/nav/topbar.tsx`）+ Theme Toggle
+- 顶部 banner（条件出现）：`/api/system/health` 检测到 ffmpeg / yt-dlp 缺失时提示安装
 
-## 页面规范
+## 页面规格
 
-### 1. `/dashboard` — 概览
+### 1. `/dashboard` — 仪表盘
 
-**目标：** 一眼看清"系统现在在干什么"。
+**目标**：一眼看清"系统现在在干什么 + 历史增长趋势"。
+
+布局（自上而下）：
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│ [运行中] [排队] [今日完成] [今日失败] [总条目] [新增]   │
-│   2       1       14         1         1234     89    │
-└─────────────────────────────────────────────────────────┘
+统计卡片（StatsCard 组件）
+┌─────────┬─────────┬─────────┬─────────┬─────────┬─────────┐
+│ 运行中  │ 排队    │ 24h 完成│ 24h 失败│ 总条目  │ 24h 新增│
+│   2     │   1     │   14    │   1     │  1234   │   89    │
+└─────────┴─────────┴─────────┴─────────┴─────────┴─────────┘
 
-[当前运行]                                       [+ 新建运行]
+新增趋势（GET /api/stats/trend?days=7）
 ┌──────────────────────────────────────────────────────────┐
-│ ▶ nextjs-blog · run abc123 · 2m 14s                      │
-│   [████████░░░░░░░] fetched 24/?? · 0 errors             │
-│   [查看实时日志] [停止]                                   │
-├──────────────────────────────────────────────────────────┤
-│ ▶ housekeeping · run xyz789 · 12s                        │
-│   ...                                                     │
+│ 折线 / 条形：最近 7 天每日新 item                        │
 └──────────────────────────────────────────────────────────┘
 
-[最近完成]
+平台 / Kind Breakdown（GET /api/stats/breakdown）
+┌──────────────────────┬───────────────────────────────────┐
+│ byPlatform           │ byKind                            │
+│ youtube  ████ 1234   │ video    ████ 5678                │
+│ bilibili ██   456    │ post     ███  1234                │
+│ ...                  │ ...                               │
+└──────────────────────┴───────────────────────────────────┘
+
+最近 Run（GET /api/runs?pageSize=5）
 ┌──────────────────────────────────────────────────────────┐
-│ ✓ nextjs-blog 12 min ago · 24 fetched · 22 new · 0 err   │
-│ ✓ nextjs-blog 1 h ago    · 24 fetched · 0 new            │
-│ ✗ vercel-docs 2 h ago    · timeout @ depth 2             │
+│ run id · spider name · 状态 · 用时 · 统计                │
+│ [查看] [停止]                                             │
 └──────────────────────────────────────────────────────────┘
 ```
 
-**数据源：**
+数据：
 
 - `GET /api/stats/summary`（5s 轮询）
-- `GET /api/runs?status=running,queued`（5s 轮询）
-- `GET /api/runs?status=completed,failed,stopped&pageSize=10`（10s 轮询）
+- `GET /api/stats/trend?days=7`（30s 轮询）
+- `GET /api/stats/breakdown`（30s 轮询）
+- `GET /api/runs?status=running,queued&pageSize=10` + `GET /api/runs?pageSize=5`（5s）
 
-**交互：**
+操作：
 
-- 点击"新建运行"打开 Modal，选择 Spider + 调参
-- 点击运行行 → 跳 `/runs/[id]`
-- "停止"按钮调 `POST /api/runs/[id]/stop`，乐观更新
+- Topbar `[+ 新建运行]`：弹出 `<NewRunDialog>`（选 spider / 修改 overrides / 启动）
 
 ---
 
 ### 2. `/spiders` — Spider 列表
 
 ```
-┌────────────────────────────────────────────────────────┐
-│ Search [_____________]              [+ 新建 Spider]    │
-├──────────┬──────────────┬────────┬────────┬───────────┤
-│ Name     │ Display      │ Cron   │ Last   │ Actions   │
-├──────────┼──────────────┼────────┼────────┼───────────┤
-│ nextjs-  │ Next.js 官博 │ —      │ 12 min │ [▶] [⋯]  │
-│  blog    │              │        │ ago    │           │
-└──────────┴──────────────┴────────┴────────┴───────────┘
+Topbar：             [+ 新建 Spider]   [+ 按链接抓取]
+搜索 / 状态过滤
+┌──────────────────────────────────────────────────────────┐
+│ Name                Type            Platform  Cron  状态 │
+├──────────────────────────────────────────────────────────┤
+│ YouTube 健身 · 搜索   youtube-search  youtube  —    ●   │
+│ B 站 UP 主 · ...      bilibili-...    bilibili —    ●   │
+│ URL 提取器（内置）    url-extractor   —        —    ●   │
+└──────────────────────────────────────────────────────────┘
 ```
 
-每行右侧有"立即运行"按钮（一键 `POST /api/runs`）和下拉菜单（编辑、禁用、删除）。
+数据：`GET /api/spiders`（10s 轮询）。
+
+操作：
+
+- 行点击 → `/spiders/:id`
+- `[+ 新建 Spider]`：弹出对话框，先选 type（来自 `GET /api/spiders/registry`），填 name / cron / defaultParams / startUrls 等 → `POST /api/spiders`
+- `[+ 按链接抓取]`：弹出对话框，textarea 粘贴 URL（每行一条，1..50） → `POST /api/extract`，成功跳转 `/runs/:runId`
+- 行右键/末列：启用/禁用、克隆、删除（带 confirm）
 
 ---
 
-### 3. `/spiders/[name]` — Spider 详情
+### 3. `/spiders/[id]` — Spider 详情
 
-两个 Tab：
+布局：
 
-**Tab 1: 配置**
+- Header：name + type + platform badge + enable toggle
+- 配置卡：startUrls / allowedHosts / maxDepth / concurrency / perHostIntervalMs / cronSchedule / defaultParams（jsonb 编辑器）
+- 操作：保存（`PUT /api/spiders/:id`）、立即运行（`POST /api/runs`）、导出 JSON、删除
+- 最近 5 条 Run 摘要 + 最近 5 条 Item 抽样
 
-- 表单：displayName, description, startUrls (可增删), allowedHosts, maxDepth, concurrency, perHostIntervalMs, cronSchedule
-- 用 react-hook-form + zodResolver
-- 顶部右侧"保存"按钮，禁用直到表单 dirty
-
-**Tab 2: 历史 Runs**
-
-- 嵌入式 Run 列表，自动按当前 spider 过滤
+数据：`GET /api/spiders/:id`、`GET /api/runs?spiderId=:id&pageSize=5`、`GET /api/items?spider=<name>&pageSize=5`。
 
 ---
 
-### 4. `/runs` — Run 列表
+### 4. `/runs` — 任务列表
 
 ```
-[Spider: All ▼]  [Status: All ▼]  [日期范围]      [搜索]
+顶部过滤：spider 下拉、status chip（all / running / queued / completed / failed / stopped）
+┌──────────────────────────────────────────────────────────┐
+│ □ run id · spider · 状态 · 触发 · 创建时间 · 用时 · stats │
+└──────────────────────────────────────────────────────────┘
 
-┌─────────────────────────────────────────────────────────┐
-│ ✓ abc123  nextjs-blog  completed  24/24/22  12 min ago  │
-│ ▶ def456  nextjs-blog  running    18/18/16  now         │
-│ ✗ ghi789  vercel-docs  failed     5/3/3     1 h ago     │
-└─────────────────────────────────────────────────────────┘
+底部操作条（选中后）：
+[批量删除]
 ```
 
-每行可点击进入详情。状态用图标 + 颜色区分：
-
-- ⏳ queued — 灰
-- ▶ running — 蓝（带跑马灯动画）
-- ✓ completed — 绿
-- ✗ failed — 红
-- ⏹ stopped — 橙
+数据：`GET /api/runs`（spiderId / status / page）。
+对终态行支持复选；`DELETE /api/runs { ids }` 自动跳过 running/queued。
 
 ---
 
-### 5. `/runs/[id]` — Run 详情（核心页）
+### 5. `/runs/[id]` — Run 详情
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│ ⏵ Run abc123 · nextjs-blog · running · 2m 14s           │
-│ [停止] [复制 ID] [新建相同 Run]                          │
-├─────────────────────────────────────────────────────────┤
-│ Stats                                                    │
-│ ┌────────┬────────┬────────┬────────┐                   │
-│ │ Fetch  │ Emit   │ New    │ Errors │                   │
-│ │  24    │  24    │  22    │   0    │                   │
-│ └────────┴────────┴────────┴────────┘                   │
-├─────────────────────────────────────────────────────────┤
-│ Live Logs                          [Pause] [Clear filter]│
-│ ┌─────────────────────────────────────────────────────┐ │
-│ │ 13:50:01 INFO  fetched https://nextjs.org/blog      │ │
-│ │ 13:50:01 INFO  parsed page (24 links, 22 followed)  │ │
-│ │ 13:50:02 INFO  fetched https://nextjs.org/blog/...  │ │
-│ │ 13:50:02 INFO  emitted item: "Turbopack..."         │ │
-│ │ ▌ (auto-scroll)                                     │ │
-│ └─────────────────────────────────────────────────────┘ │
-│ Filter: [○ Debug ○ Info ◉ Warn ○ Error]                 │
-└─────────────────────────────────────────────────────────┘
+Header：状态徽章 · spider · 触发类型 · 用时 · 创建时间
+统计卡：fetched / emitted / newItems / errors（StatsCard）
+
+[实时日志 LiveLogStream 组件]
+事件按 level 高亮：debug 灰、info 默认、warn 黄、error 红
+
+操作：
+- running：[停止]
+- 终态：  [查看 events] / [查看本次 items]
 ```
 
-**实时日志：** 通过 `/sse/runs/[id]/logs` 订阅。
+数据：
 
-**控件：**
+- `GET /api/runs/:id`（running/queued 时 2s 轮询，其他终态停止）
+- SSE `GET /sse/runs/:id/logs` —— ready / log / done 三种事件
+- 终态时合成 `done` 立即关闭
 
-- "Pause" 暂停自动滚动（重新出现新日志时变回"Resume + N"按钮）
-- "Filter" 客户端按 level 过滤
-- 顶部"复制 ID"快捷
-- "新建相同 Run" → 跳到 `/runs/new?from=<id>`，预填同样的 spider + overrides
+`<LiveLogStream>`（`src/components/runs/live-log-stream.tsx`）行为：
 
-**完成后：** 收到 `done` 事件，关闭 SSE，按钮区切换到只读"查看抓取结果 →"链接到 `/items?runId=<id>`。
+- 自动滚到底；用户上滑后暂停自动滚，回底再恢复
+- `event === 'done'` → 关 EventSource、刷新 run 详情
+- 历史事件先于 live 渲染，时间戳去重
 
 ---
 
-### 6. `/items` — 抓取结果
-
-最重要的"使用方"页面。
+### 6. `/items` — 数据列表
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│ Spider: [All ▼]  Type: [All ▼]  q: [_____________] [⌕] │
-└─────────────────────────────────────────────────────────┘
+顶部过滤：q（标题/payload 模糊）、spider、type、platform、kind、runId
+┌──────────────────────────────────────────────────────────┐
+│ □ thumb · title · platform · kind · spider · fetched_at  │
+└──────────────────────────────────────────────────────────┘
 
-┌────┬────────┬──────┬─────────────────────┬──────────┐
-│ #  │ Spider │ Type │ Title (from payload)│ Fetched  │
-├────┼────────┼──────┼─────────────────────┼──────────┤
-│ 12 │ nextjs │ post │ Turbopack 1.0       │ 12m ago  │
-│ 11 │ nextjs │ post │ Next.js 15 stable…  │ 13m ago  │
-└────┴────────┴──────┴─────────────────────┴──────────┘
-
-[Load more] / 分页器
+底部操作条（选中后）：
+[批量删除]
 ```
 
-每行点击展开 inline drawer，显示 payload JSON tree（用 react-json-view 类组件）。
-顶部有 "Export JSON Lines" 按钮，下载当前过滤集合。
+数据：`GET /api/items`（10s 轮询）。
+平台 / kind 列以彩色 badge 展示（youtube=红 / bilibili=蓝 / xhs=玫红 等）。
 
 ---
 
 ### 7. `/items/[id]` — Item 详情
 
-整页：URL、抓取时间、所属 Run（链接）、payload 完整 JSON，支持复制全部。
+不同 kind 渲染不同布局，但骨架统一：
+
+```
+Header：title · platform · kind · spider · run · fetched_at
+
+左：渲染区（kind=video 时显示封面 + 元数据 + 数字单位"万/亿"自动）
+   - 标题 / 作者 / 发布时间 / 时长 / 标签
+   - 指标：views / likes / comments / shares
+   - 描述（折叠展开）
+
+右：操作面板
+   - [打开原始 URL]
+   - kind=video：
+       [下载 ▾] DropdownMenu
+       ├ 视频 · 最佳画质（http 直链）
+       ├ 视频 · 1080 / 720 / 480 / 360p（yt-dlp）
+       ├ 仅音频 mp3（yt-dlp）
+       └ — 分隔
+       └ [获取格式]：调 POST /api/items/:id/formats，写回 payload.videoFormats，刷新菜单
+   - JSON 视图：JsonViewer 组件展示 payload
+
+底：相关 items（同 sourceId / 同 author，可选）
+```
+
+数据：
+
+- `GET /api/items/:id`
+- 下载：`GET /api/items/:id/download?url=&fetcher=&audioOnly=&quality=` —— 浏览器原生下载
+- 获取格式：`POST /api/items/:id/formats`
+
+数字格式化：≥ 1 亿显示 "x.x 亿"，≥ 1 万显示 "x.x 万"，否则原值。
 
 ---
 
 ### 8. `/settings` — 设置
 
-三个 Tab：
+`<Tabs>`，6 个 tab：
 
-**Tab 1: 代理池**
+| tab          | 内容                                                                                                      |
+| ------------ | --------------------------------------------------------------------------------------------------------- |
+| **凭据管理** | accounts CRUD：列表 / 新增 / 测试 / 解禁 / 删除（详见下方）                                               |
+| **代理池**   | 编辑 `settings.proxy_pool`（一行一个 URL）；保存 = `PUT /api/settings/proxy_pool`                         |
+| **通知**     | 编辑 `webhook_url`，[发送测试] = `POST /api/settings/webhook_test`                                        |
+| **下载**     | `GET /api/system/health` 显示 ffmpeg / yt-dlp 状态 + 安装指引                                             |
+| **UA 池**    | 编辑 `ua_pool.user_agents`（一行一个）                                                                    |
+| **默认参数** | 编辑 `settings.defaults`（concurrency / perHostIntervalMs / requestTimeoutMs / retryAttempts / logLevel） |
 
-- 列表展示当前所有代理：`url / failures / lastUsed / status (active / disabled)`
-- 顶部"添加"打开 Modal：URL、可选用户名密码
-- 每行可"测试"（向测试 endpoint 发请求看是否通）和"删除"
+#### 凭据管理子页
 
-**Tab 2: User-Agent 池**
+```
+顶部：[+ 添加凭据]   平台筛选下拉
+┌──────────────────────────────────────────────────────────────────┐
+│ 平台 · label · kind · 状态 · last used · failureCount · quota    │
+│ [测试] [解禁] [删除]                                              │
+└──────────────────────────────────────────────────────────────────┘
+```
 
-- 文本框（每行一个 UA）
-- 顶部按钮"重置为默认"
+- 添加：`POST /api/accounts` —— platform / label / kind / payload / 可选 expiresAt
+- 测试：`POST /api/accounts/:id/test` → toast 显示 valid + message
+- 解禁：`PATCH /api/accounts/:id { action: 'unban' }` → 刷新（仅 banned 行可见）
+- 删除：`DELETE /api/accounts/:id`（confirm）
+- 状态徽章：active 绿 / banned 红 / expired 灰 / disabled 灰
 
-**Tab 3: 默认参数**
-
-- 全局 `concurrency / perHostIntervalMs / requestTimeoutMs / retryAttempts` 默认值
-- 影响新建 Run 时表单的初值（不会改 Spider 已有配置）
+> payload 输入框使用密码型（不显示），列表展示永远不回显原文。
 
 ---
 
-## 共享组件清单
+## 通用 UI 约定
 
-| 组件               | 路径                                       | 用途                                                  |
-| ------------------ | ------------------------------------------ | ----------------------------------------------------- |
-| `<RunStatusBadge>` | `src/components/runs/run-status-badge.tsx` | queued/running/completed/failed/stopped 状态徽章      |
-| `<StatsCard>`      | `src/components/stats/stats-card.tsx`      | dashboard 顶部统计卡片                                |
-| `<LiveLogStream>`  | `src/components/runs/live-log-stream.tsx`  | SSE 接入的实时日志面板                                |
-| `<NewRunDialog>`   | `src/components/runs/new-run-dialog.tsx`   | 新建 Run 的 Modal                                     |
-| `<JsonViewer>`     | `src/components/items/json-viewer.tsx`     | item payload 的 JSON 树展示                           |
-| Sidebar / Topbar   | `src/components/nav/{sidebar,topbar}.tsx`  | 全局布局                                              |
-| shadcn primitives  | `src/components/ui/*`                      | badge / button / card / dialog / input / table / tabs |
+- 颜色：tailwind 默认 + shadcn 主题；platform / kind / status 用一致的色板（见 `items/[id]/page.tsx` 顶部 BADGE map）
+- 状态徽章 `<RunStatusBadge>`：queued 蓝 / running 紫 / completed 绿 / failed 红 / stopped 灰
+- 错误提示：`sonner` toast；表单字段错误 inline
+- 加载：骨架屏 / spinner；TanStack Query `isPending`
+- 空状态：固定居中提示 + 主操作按钮
+- 危险操作：`<ConfirmDialog>`（删除 / 批量删除）
 
-> `<RunRow>` / `<PaginatedTable>` / `<EmptyState>` 目前直接在各 page 内联实现，待重复使用时再抽出。
+## 用户旅程：典型四条
 
-## 用户旅程
-
-### 第一次使用
-
-1. 打开 `/dashboard`，空空如也，提示"还没有任何 Spider，先去 [Spiders](/spiders) 创建一个"
-2. 点链接进 `/spiders`，看到示例 Spider `nextjs-blog`，点"立即运行"
-3. 自动跳到 `/runs/[id]`，看实时日志滚动
-4. 完成后点"查看抓取结果"进 `/items?runId=<id>`，浏览数据
-5. 回到 `/dashboard` 看统计卡片有数据了
-
-### 日常运营
-
-1. 打开 `/dashboard` 看是否有"运行中"或"今日失败"
-2. 有失败 → 点进 `/runs/[id]` 看错误日志
-3. 没问题 → 点 `+ 新建运行` 触发一次新抓取，或者去 `/spiders/[name]` 配 cron 让它自动跑
-
-### 出现反爬
-
-1. `/runs/[id]` 看到大量 `errors`，日志里都是 403
-2. 跳 `/settings` Tab 1，添加几个代理
-3. 回 `/runs` 重新触发，错误率应该下降
-
-## 设计原则
-
-- **状态先行**：每个页面顶部都用最显眼的方式展示当前状态（颜色 + 数字）
-- **渐进披露**：列表页不展开 payload，需要详情时点击
-- **无意外**：危险操作（删除 Spider、清空 visited）必须二次确认
-- **实时优先**：能 SSE 就 SSE，能 5s 轮询就 5s，能不轮询就不轮询
-- **空状态友好**：每个列表都有引导式空状态（不是冷冰冰的"暂无数据"）
+1. **手动单跑**：spiders 列表 → 行 [立即运行] / 顶部 [+ 新建运行] → 选 spider + overrides → 跳 `/runs/:id` 看 SSE 日志 → 完成后跳 `/items?runId=:id`
+2. **按链接抓**：`/spiders` 顶部 [+ 按链接抓取] → 粘贴 URL → 跳 `/runs/:runId` → 完成后看结果
+3. **配 cron**：`/spiders/:id` 设 cronSchedule（如 `0 */6 * * *`）保存 → 自动到点跑 → `/runs?spiderId=:id` 看历史
+4. **凭据失效自愈**：worker 跑完 run 失败 → `accounts.failure_count` 累加 → 阈值后 `banned` → 看板 settings 解禁或新增 + 测试 → 再跑

@@ -1,12 +1,11 @@
 # API 规范
 
-> 所有 API 路由都在 `src/app/api/`（Next.js App Router）。
-> SSE 通道单独放在 `src/app/sse/`。
-> JSON 入出，遵循统一错误格式（统一包装函数在 `src/lib/api/response.ts`）。
+> 所有 REST 路由在 `src/app/api/**/route.ts`，SSE 在 `src/app/sse/**/route.ts`。
+> JSON 入出，统一响应包装在 `src/lib/api/response.ts` —— `ok()` / `fail()` / `failValidation()` / `failInternal()`。
 
 ## 通用约定
 
-### 响应格式
+### 响应包装
 
 成功：
 
@@ -21,329 +20,401 @@
   "ok": false,
   "error": {
     "code": "VALIDATION_ERROR",
-    "message": "spider 字段缺失",
-    "details": { "field": "spider" }
+    "message": "spiderId 字段缺失",
+    "details": <unknown>
   }
 }
 ```
 
 ### 错误码
 
-| code               | HTTP | 含义                       |
-| ------------------ | ---- | -------------------------- |
-| `VALIDATION_ERROR` | 400  | 参数不合法（Zod 校验失败） |
-| `NOT_FOUND`        | 404  | 资源不存在                 |
-| `CONFLICT`         | 409  | 状态冲突（比如重复创建）   |
-| `INTERNAL_ERROR`   | 500  | 兜底                       |
+| code               | HTTP | 含义                                   |
+| ------------------ | ---- | -------------------------------------- |
+| `VALIDATION_ERROR` | 400  | 参数不合法（Zod 校验失败）             |
+| `NOT_FOUND`        | 404  | 资源不存在                             |
+| `CONFLICT`         | 409  | 状态冲突（如对非 running run 调 stop） |
+| `INTERNAL_ERROR`   | 500  | 兜底                                   |
 
 ### 鉴权
 
-当前不做。所有路由匿名可访问。
+不做。所有路由匿名可访问，假设单用户本地环境。
 
 ### 分页
 
-列表接口统一参数：
-
-```
-?page=1&pageSize=20&sort=-createdAt
-```
-
-返回 `{ data: T[], total: number, page, pageSize }`。
+列表接口公约 `?page=1&pageSize=20`，返回 `{ data: T[], total, page, pageSize }`。具体过滤参数见各接口。
 
 ---
 
-## REST 端点
+## Spiders
 
-### Spiders
+### `GET /api/spiders`
 
-#### `GET /api/spiders`
+列出全部 spider。返回 `Spider[]`（见 [data-model.md](./data-model.md)）。
 
-列出所有 Spider。
+### `POST /api/spiders`
 
-**返回：**
-
-```json
-{
-  "ok": true,
-  "data": [
-    {
-      "name": "nextjs-blog",
-      "displayName": "Next.js 官博",
-      "description": "...",
-      "startUrls": ["https://nextjs.org/blog"],
-      "allowedHosts": ["nextjs.org"],
-      "maxDepth": 2,
-      "concurrency": 4,
-      "perHostIntervalMs": 500,
-      "enabled": true,
-      "cronSchedule": null
-    }
-  ]
-}
-```
-
-#### `GET /api/spiders/:name`
-
-单个 Spider 的详情。404 if not found.
-
-#### `PUT /api/spiders/:name`
-
-更新 Spider 配置。
-
-**请求体：**
+创建 spider。
 
 ```json
 {
-  "displayName": "...",
-  "startUrls": ["..."],
-  "maxDepth": 3,
-  "concurrency": 8,
+  "type": "youtube-search",
+  "name": "YouTube 搜索 - 健身",
+  "description": "可空",
+  "startUrls": [],
+  "allowedHosts": [],
+  "maxDepth": 2,
+  "concurrency": 4,
+  "perHostIntervalMs": 500,
   "enabled": true,
-  "cronSchedule": "0 */6 * * *"
+  "cronSchedule": null,
+  "defaultParams": { "query": "fitness" },
+  "platform": "youtube"
 }
 ```
 
-只允许修改可调参数，`name` 不变。Worker 下次启动 Run 时读取最新值。
+返回创建后的 `Spider`。`cronSchedule` 写入后会同步到 pg-boss schedule。
+
+### `GET /api/spiders/:id`
+
+> URL 参数 `:id` 是 spiders.id UUID（路由文件名是 `[name]`，承载 id）。
+
+单个 spider 详情。
+
+### `PUT /api/spiders/:id`
+
+更新 spider（全量替换字段）。请求体同 POST。`cronSchedule` 变化时同步 pg-boss schedule。
+
+### `DELETE /api/spiders/:id`
+
+删除 spider；先清除对应 cron schedule。
+
+### `GET /api/spiders/registry`
+
+返回代码注册表里全部可用 spider 类型，用于"新建 Spider"下拉框。
+
+```json
+{ "ok": true, "data": [{ "name": "youtube-search", "platform": "youtube" }, ...] }
+```
 
 ---
 
-### Runs
+## Runs
 
-#### `POST /api/runs`
+### `POST /api/runs`
 
-创建一个新 Run（入队）。
-
-**请求体：**
+创建并入队一次抓取。
 
 ```json
 {
-  "spider": "nextjs-blog",
-  "overrides": {
-    "concurrency": 8,
-    "maxDepth": 1
-  }
+  "spiderId": "<uuid>",
+  "overrides": { "query": "..." }
 }
 ```
 
-**返回：**
+返回 `{ id }`。spider 不存在 → 404；spider 被 disable → 409。
+
+### `GET /api/runs`
+
+```
+?spiderId=&status=queued,running&page=1&pageSize=20
+```
+
+`status` 用逗号分隔多值。返回标准分页结果。
+
+### `GET /api/runs/:id`
+
+单个 run 详情。
+
+### `DELETE /api/runs/:id`
+
+删除单个 run。`running` / `queued` 不允许删（409）。
+
+### `DELETE /api/runs`
+
+批量删除：
 
 ```json
-{
-  "ok": true,
-  "data": { "id": "8a4f9b1c-..." }
-}
+{ "ids": ["<uuid>", "<uuid>"] }
 ```
 
-行为：
+返回 `{ deleted: <number> }`。运行中/排队中的会被自动跳过，不报错。
 
-1. 校验 `spider` 存在且 `enabled = true`
-2. 在 `runs` 表插入一行 status = `queued`
-3. 通过 `pgboss.send('crawl', { runId, spider, overrides })` 入队
-4. 返回 runId
+### `POST /api/runs/:id/stop`
 
-#### `GET /api/runs`
+停止 running run：触发进程内 `AbortSignal`，立即把 status 标为 `stopped`。非 running → 409。
 
-历史 Run 列表。支持过滤：
+### `GET /api/runs/:id/events`
 
 ```
-?spider=nextjs-blog&status=running&page=1&pageSize=20
+?level=&page=1&pageSize=100
 ```
 
-**返回每行：**
-
-```json
-{
-  "id": "...",
-  "spiderName": "nextjs-blog",
-  "status": "running",
-  "fetched": 24,
-  "emitted": 24,
-  "newItems": 22,
-  "errors": 0,
-  "startedAt": "2026-04-30T13:50:00Z",
-  "finishedAt": null,
-  "durationMs": null
-}
-```
-
-#### `GET /api/runs/:id`
-
-单个 Run 的完整信息。
-
-#### `POST /api/runs/:id/stop`
-
-停止正在运行的 Run。
-
-行为：
-
-1. 查 status，如果不是 `running` 返回 409
-2. 通过进程内 EventBus 发布 `stop:{runId}` 信号；同进程的 pg-boss worker 把 `runId` 对应的 `AbortController.abort()`
-3. 立即把 `runs.status` 改为 `stopped`（worker 收到信号后会清理资源）
-4. 返回 `{ ok: true }`
-
-#### `GET /api/runs/:id/events`
-
-某个 Run 的历史事件（持久化日志）。
-
-```
-?level=info&page=1&pageSize=100
-```
-
-> 实时日志走 SSE，见下方 `/sse/runs/:id/logs`。
+读 events 表。levels：`debug` / `info` / `warn` / `error`。
 
 ---
 
-### Items
+## URL 提取（按链接抓）
 
-#### `GET /api/items`
+### `POST /api/extract`
 
-抓取结果列表。
-
-**参数：**
-
-| 参数               | 类型                       | 说明                        |
-| ------------------ | -------------------------- | --------------------------- |
-| `spider`           | string                     | 过滤 spider                 |
-| `runId`            | uuid                       | 限定某次 Run                |
-| `type`             | string                     | 过滤 item.type              |
-| `q`                | string                     | 搜索（url + payload.title） |
-| `page`, `pageSize` | number                     | 分页                        |
-| `sort`             | `-fetchedAt` / `fetchedAt` | 排序                        |
-
-**返回每行：**
+按用户提交的 URL 列表创建一次"按链接抓取"运行；走内置 `url-extractor` spider。
 
 ```json
-{
-  "id": 123,
-  "spider": "nextjs-blog",
-  "type": "post",
-  "url": "https://nextjs.org/blog/turbopack-...",
-  "fetchedAt": "...",
-  "payload": { "title": "...", "description": "..." }
-}
+{ "urls": ["https://www.youtube.com/watch?v=..."] }
 ```
 
-#### `GET /api/items/:id`
+约束：1..50 条，会 trim + 去重。
 
-单条详情，返回完整 `payload`。
+返回：
+
+```json
+{ "ok": true, "data": { "runId": "<uuid>", "accepted": 3, "rejected": ["bad url"] } }
+```
+
+- `rejected` = 本批中"格式非法（new URL 抛错）"的字符串，不进 run。
+- "格式合法但 host 不被支持"的 URL **仍然进 run**，由 spider 在 parse 时记 error 跳过——便于用户从 events 表回溯。
+
+进度看 `/sse/runs/:runId/logs`；结果 `GET /api/items?runId=:runId`。
 
 ---
 
-### Settings
+## Items
 
-#### `GET /api/settings/:key`
-
-读取一个 setting key。返回 `{ key, value, updatedAt }`。
-
-#### `PUT /api/settings/:key`
-
-写一个 setting key。
-
-**请求体：** `{ "value": <任意 JSON> }`
-
-**示例：更新代理池**
+### `GET /api/items`
 
 ```
-PUT /api/settings/proxy_pool
-Body: { "value": { "proxies": [
-  { "url": "http://user:pass@host:8080", "failures": 0 }
-] } }
+?spider=&type=&runId=&q=&platform=&kind=&page=1&pageSize=20
 ```
 
-校验逻辑根据 key 决定，按 key 分发的 Zod schema 由 settings 路由 (`src/app/api/settings/[key]/route.ts`) 自管。
+`q` 走 payload 全文 / title 模糊匹配（取决于 repository 实现）。
 
----
+### `GET /api/items/:id`
 
-### Stats（看板首页用）
+单个 item 详情；payload 收紧成 `Record<string, unknown>`。
 
-#### `GET /api/stats/summary`
+### `DELETE /api/items`
 
-聚合数据，给 Dashboard 卡片用。
+批量删除：
 
-**返回：**
+```json
+{ "ids": [1, 2, 3] }
+```
+
+返回 `{ deleted: <number> }`。
+
+### `GET /api/items/:id/download`
+
+流式代理下载，触发浏览器原生下载进度条。
+
+```
+?url=<source-url>&fetcher=http|ytdlp&audioOnly=false&quality=best|1080p|720p|480p|360p
+```
+
+- `fetcher=http`（默认）：`got.stream` 把源 URL 直接 pipe 给浏览器，`Content-Type` / `Content-Length` 透传。
+- `fetcher=ytdlp`：spawn `yt-dlp` 下载到临时目录，完成后流式回传，结束后自动清理。
+- 客户端断开（`signal.aborted`）→ 销毁 `got` stream / `kill` yt-dlp 进程。
+- `audioOnly=true`（仅 ytdlp）输出 mp3。
+- `quality` 控制 yt-dlp 选择的视频清晰度上限。
+
+### `POST /api/items/:id/formats`
+
+按需调用 `yt-dlp --dump-json` 解析该 URL 的可用格式，写入 `payload.videoFormats` 并返回结果。
+
+返回：
 
 ```json
 {
   "ok": true,
   "data": {
-    "running": 2,
-    "queued": 1,
-    "completed24h": 14,
-    "failed24h": 1,
-    "totalItems": 1234,
-    "newItems24h": 89,
-    "qpsLast5m": 12.4,
-    "errorRateLast5m": 0.02
+    "formats": [{ "height": 1080, "size": 12345678 }, ...],
+    "hasAudio": true,
+    "audioSize": 1234567
   }
 }
 ```
 
 ---
 
-## SSE 通道
+## Accounts
+
+### `GET /api/accounts`
+
+```
+?platform=youtube
+```
+
+不带 `platform` 返回全部。`payload_enc` 字段不会回传（仓库层显式 omit）。
+
+### `POST /api/accounts`
+
+```json
+{
+  "platform": "youtube",
+  "label": "alt 1",
+  "kind": "apikey",
+  "payload": "AIza...",
+  "expiresAt": "2026-12-31T00:00:00Z"
+}
+```
+
+`payload` 在 server 侧用 AES-256-GCM 加密后入库。返回 201。
+
+### `PATCH /api/accounts/:id`
+
+```json
+{ "action": "unban" }
+```
+
+把 status 重置为 `active`、`failure_count` 清零。目前只支持 `unban`。
+
+### `DELETE /api/accounts/:id`
+
+物理删除。
+
+### `POST /api/accounts/:id/test`
+
+轻量验证凭据，更新 `last_tested_at` / `last_test_ok`。返回：
+
+```json
+{ "ok": true, "data": { "valid": true, "message": "YouTube API Key 有效" } }
+```
+
+- `youtube + apikey`：调 `videos.list`（消耗 1 配额单位），失败时把 Google 返回的 message 透传。
+- 其他平台/类型：直接 `valid=true`，标 message 说明无远程验证。
+
+---
+
+## Settings
+
+### `GET /api/settings/:key`
+
+```json
+{ "ok": true, "data": { "key": "webhook_url", "value": "https://..." } }
+```
+
+不存在的 key 返回 `value: null`，不报 404。
+
+### `PUT /api/settings/:key`
+
+```json
+{ "value": <any-json> }
+```
+
+upsert。
+
+### `POST /api/settings/webhook_test`
+
+读取 `settings.webhook_url`，发送一次 `{ event: "test", message, at }` 测试包，10s 超时。
+未配置 → 400；非 2xx 响应 → 500。
+
+---
+
+## Stats
+
+### `GET /api/stats/summary`
+
+仪表盘头部卡片用：
+
+```json
+{
+  "running": 0,
+  "queued": 0,
+  "completed24h": 12,
+  "failed24h": 1,
+  "totalItems": 12345,
+  "newItems24h": 200
+}
+```
+
+### `GET /api/stats/trend?days=7`
+
+最近 N 天每日新增 items，缺失日填 0。N 取 1..90。
+
+```json
+{ "ok": true, "data": [{ "date": "2026-04-26", "count": 12 }, ...] }
+```
+
+### `GET /api/stats/breakdown`
+
+items 按平台 / kind 聚合：
+
+```json
+{
+  "ok": true,
+  "data": {
+    "byPlatform": [{ "label": "youtube", "count": 1234 }, ...],
+    "byKind":     [{ "label": "video",   "count": 5678 }, ...]
+  }
+}
+```
+
+`COALESCE(NULL, '未知')` 统一兜底。
+
+---
+
+## System
+
+### `GET /api/system/health`
+
+检测本机 ffmpeg / yt-dlp 是否可用，5 分钟进程内 cache，看板顶部 banner 用：
+
+```json
+{
+  "ok": true,
+  "data": {
+    "ffmpeg": { "ok": true, "version": "6.0" },
+    "ytdlp": { "ok": true, "version": "2024.10.07" },
+    "checkedAt": 1730000000000
+  }
+}
+```
+
+缺失时 `ok=false` 并附 `installHint`。
+
+---
+
+## SSE
 
 ### `GET /sse/runs/:id/logs`
 
-订阅某个 Run 的实时事件流。
-
-**响应头：**
+订阅某次 run 的实时事件。返回 `text/event-stream`：
 
 ```
-Content-Type: text/event-stream
-Cache-Control: no-cache, no-transform
-Connection: keep-alive
-```
+event: ready
+data: { "runId": "..." }
 
-**事件格式：**
-
-进程内 pg-boss worker 把每个 `CrawlerEvent` 推到内存 EventBus，
-SSE handler 订阅 `runId` 对应的 channel 并转发给浏览器：
-
-```
 event: log
-data: {"level":"info","type":"fetched","message":"https://...","at":"2026-04-30T13:50:01Z"}
-
-event: stats
-data: {"fetched":42,"emitted":40,"errors":0}
+data: <CrawlerEvent>
 
 event: done
-data: {"status":"completed","stats":{...}}
+data: <CrawlerEvent type=done>
 ```
 
-事件类型：
+特性：
 
-| event   | 说明                                 |
-| ------- | ------------------------------------ |
-| `log`   | 任意日志事件                         |
-| `stats` | 增量统计快照（每秒最多 1 次）        |
-| `done`  | Run 终止（completed/failed/stopped） |
+- 心跳：30s 发 `: ping` 评论防代理超时
+- 终态保护：连接时 run 已结束 → 立即合成 `done` 并关闭，浏览器不会卡住
+- 历史回放：先订阅 EventBus 缓冲 live → 从 `events` 表读历史发给前端 → 按 `at` 时间戳去重刷出缓冲的 live 事件
+- 客户端：`event === 'done'` 时主动 `es.close()`
 
-客户端处理：
-
-```ts
-const es = new EventSource(`/sse/runs/${id}/logs`);
-es.addEventListener('log', (e) => append(JSON.parse(e.data)));
-es.addEventListener('stats', (e) => updateStats(JSON.parse(e.data)));
-es.addEventListener('done', () => es.close());
-```
-
-**断线重连：** 浏览器自动重连。Server 端要支持 `Last-Event-ID` 头，把缺失的事件回放给客户端（当前简化：不回放，只发新事件，客户端可在重连后重新拉一次 `/api/runs/:id/events`）。
+`runtime = 'nodejs'`、`dynamic = 'force-dynamic'` —— 不能被静态化。
 
 ---
 
-## 校验 schema 共享
+## CrawlerEvent 类型
 
-请求体 Zod schema 与 API 路由代码并置（在每个 `src/app/api/.../route.ts` 文件
-顶部声明）。需要在前端复用时，可以从对应的 route 文件 re-export，或者集中放到
-`src/lib/shared/`（目前共享的主要是 `CrawlerEvent` 联合类型）。
+定义在 `src/lib/shared/events.ts`：
 
-前端 `react-hook-form + zodResolver` 直接复用同一份 schema，省掉两边手抄。
+| type           | level        | 关键字段                                                    |
+| -------------- | ------------ | ----------------------------------------------------------- |
+| `fetched`      | info / debug | `url`, `status`, `durationMs`                               |
+| `queued`       | debug        | `url`, `depth`                                              |
+| `skipped`      | debug        | `url`, `reason`                                             |
+| `emitted`      | info         | `url`, `itemType`, `isNew`                                  |
+| `fetch_failed` | warn         | `url`, `attempt`, `error`                                   |
+| `error`        | warn / error | `message`                                                   |
+| `done`         | info         | `stats: { fetched, emitted, newItems, errors, durationMs }` |
 
----
+公共字段：`level` / `type` / `at`(epoch ms)。
 
-## 速率限制
-
-当前不做。如果后续暴露到公网，建议：
-
-- API 路由用 `next-rate-limit` 或 Edge Middleware
-- 同时给 SSE 端点加 IP 级别的并发上限（防 DDoS）
+> `debug` 级事件只走 EventBus，不写 events 表。

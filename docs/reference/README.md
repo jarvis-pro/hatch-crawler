@@ -4,11 +4,11 @@ hatch-crawler 的"**契约**"——数据库表结构、HTTP/SSE 接口形态、
 
 ## 索引
 
-| 文档                                     | 内容                                               | 对应代码                                    |
-| ---------------------------------------- | -------------------------------------------------- | ------------------------------------------- |
-| [data-model.md](./data-model.md)         | Postgres + Prisma 全部表定义、索引、迁移、保留策略 | `prisma/schema.prisma`、`src/lib/db/`       |
-| [api-spec.md](./api-spec.md)             | REST 端点 + SSE 通道，含请求/响应示例和错误码      | `src/app/api/**`、`src/lib/api/`            |
-| [dashboard-spec.md](./dashboard-spec.md) | 8 个页面的线框、组件清单、用户旅程                 | `src/app/(dashboard)/**`、`src/components/` |
+| 文档                                     | 内容                                              | 对应代码                                           |
+| ---------------------------------------- | ------------------------------------------------- | -------------------------------------------------- |
+| [data-model.md](./data-model.md)         | Postgres + Prisma 全部 6 张业务表、索引、迁移流程 | `prisma/schema.prisma`、`src/lib/db/`              |
+| [api-spec.md](./api-spec.md)             | REST 端点 + SSE 通道，含请求/响应示例和错误码     | `src/app/api/**`、`src/app/sse/**`、`src/lib/api/` |
+| [dashboard-spec.md](./dashboard-spec.md) | 8 个页面的线框、组件清单、用户旅程                | `src/app/(pages)/**`、`src/components/`            |
 
 ## 维护约定
 
@@ -19,4 +19,4 @@ hatch-crawler 的"**契约**"——数据库表结构、HTTP/SSE 接口形态、
 ## 上下游
 
 - 想看**整体架构**和**为什么是这套设计** → [`../getting-started/architecture.md`](../getting-started/architecture.md)
-- 想看**多平台扩展提案**会怎么改这些表 → [`../rfcs/0001-multi-platform.md`](../rfcs/0001-multi-platform.md)
+- 想看**重大架构提案** → [`../rfcs/`](../rfcs/)
