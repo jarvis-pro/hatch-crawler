@@ -10,8 +10,8 @@ next-env.d.ts
 # TypeScript 增量编译缓存
 *.tsbuildinfo
 
-# 爬取数据（不入版本控制）
-data/
+# 爬取数据（不入版本控制，仅限根目录）
+/data/
 
 # 本地环境变量
 .env
