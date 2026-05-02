@@ -10,7 +10,7 @@ import type {
   Spider as PrismaSpider,
 } from '@prisma/client';
 
-// WebhookDelivery は raw SQL で管理するため Prisma 型エクスポートは不要
+export type { WebhookDelivery } from '@prisma/client';
 
 // 客户端
 export { getDb, closeDb, type Db } from './client';
@@ -27,6 +27,7 @@ export * as runRepo from './repositories/runs';
 export * as itemRepo from './repositories/items';
 export * as eventRepo from './repositories/events';
 export * as settingRepo from './repositories/settings';
+export { SETTINGS_KEYS, type SettingsKey } from './repositories/settings';
 export * as spiderRepo from './repositories/spiders';
 export * as accountRepo from './repositories/accounts';
 
@@ -53,8 +54,8 @@ export type Spider = Omit<PrismaSpider, 'startUrls' | 'allowedHosts' | 'defaultP
   startUrls: string[];
   allowedHosts: string[];
   defaultParams: Record<string, unknown>;
-  /** RFC 0003：任务类型派生标记（subscription / batch / extract） */
-  taskKind: string;
+  /** RFC 0003：任务类型派生标记 */
+  taskKind: TaskKind;
 };
 
 export type Run = Omit<PrismaRun, 'overrides'> & {
@@ -65,7 +66,7 @@ export type Run = Omit<PrismaRun, 'overrides'> & {
   spiderId: string | null;
   overrides: Record<string, unknown> | null;
   /** RFC 0003：同步自 spider.task_kind，查询时免 JOIN */
-  taskKind: string | null;
+  taskKind: TaskKind | null;
 };
 
 export type Event = Omit<PrismaEvent, 'payload'> & {
@@ -85,6 +86,14 @@ export type Item = Omit<PrismaItem, 'payload'> & {
 
 export type Setting = PrismaSetting;
 
+/**
+ * 任务类型：三分心智模型（RFC 0003）
+ *  - subscription：带 cron、持续运行
+ *  - batch：手动触发、一次性大量抓取
+ *  - extract：URL 驱动的快取
+ */
+export type TaskKind = 'subscription' | 'batch' | 'extract';
+
 // repository create-input 速记
 export type NewSpider = {
   /** 注册表类型键（如 "youtube-search"），worker 靠此反查实现类 */
@@ -102,7 +111,7 @@ export type NewSpider = {
   platform?: string | null;
   defaultParams?: Record<string, unknown>;
   /** RFC 0003：subscription / batch / extract；null = 自动推断 */
-  taskKind?: string | null;
+  taskKind?: TaskKind | null;
 };
 
 export type NewRun = {
@@ -113,7 +122,7 @@ export type NewRun = {
   triggerType: string;
   overrides?: Record<string, unknown>;
   /** RFC 0003：同步自 spider.task_kind */
-  taskKind?: string | null;
+  taskKind?: TaskKind | null;
 };
 
 export type NewEvent = {
