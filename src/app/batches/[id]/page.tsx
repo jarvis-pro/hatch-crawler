@@ -4,36 +4,12 @@ import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Play, Square } from 'lucide-react';
-import { api } from '@/lib/api-client';
+import { api, type ListResult } from '@/lib/api-client';
+import { fmtDate, durationLabel } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RunStatusBadge } from '@/components/runs/run-status-badge';
 import type { Spider, Run, Event } from '@/lib/db';
-
-interface ListResult<T> {
-  data: T[];
-  total: number;
-}
-
-function fmtDate(d: Date | string | null | undefined): string {
-  if (!d) return '—';
-  return new Date(d).toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-function durationLabel(run: Run): string {
-  if (!run.startedAt) return '—';
-  const end = run.finishedAt ? new Date(run.finishedAt) : new Date();
-  const ms = end.getTime() - new Date(run.startedAt).getTime();
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  return `${m}m ${s % 60}s`;
-}
 
 /** 聚合错误事件：按 message 分组计数 */
 function aggregateErrors(events: Event[]): { message: string; count: number }[] {

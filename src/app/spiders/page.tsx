@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { Spider } from '@/lib/db';
 import { api, ApiClientError } from '@/lib/api-client';
+import { platformBadgeClass } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -244,11 +245,6 @@ const SPIDER_DISPLAY_NAMES: Record<string, string> = {
   'weibo-user-posts': '微博用户微博',
   'douyin-search': '抖音搜索',
   'douyin-user-videos': '抖音用户视频',
-};
-
-const PLATFORM_BADGE: Record<string, string> = {
-  youtube: 'bg-red-100 text-red-800',
-  bilibili: 'bg-blue-100 text-blue-800',
 };
 
 // ── JSON fallback editor ──────────────────────────────────────────────────────
@@ -867,7 +863,7 @@ export default function SpidersPage() {
                   <TableCell>
                     {s.platform ? (
                       <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${PLATFORM_BADGE[s.platform] ?? 'bg-gray-100 text-gray-700'}`}
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${platformBadgeClass(s.platform)}`}
                       >
                         {s.platform}
                       </span>

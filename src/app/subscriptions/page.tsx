@@ -6,6 +6,7 @@ import { api } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import type { Spider } from '@/lib/db';
+import { platformBadgeClass, cronLabel } from '@/lib/utils';
 import {
   Table,
   TableBody,
@@ -14,27 +15,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-
-const PLATFORM_BADGE: Record<string, string> = {
-  youtube: 'bg-red-100 text-red-800',
-  bilibili: 'bg-blue-100 text-blue-800',
-  xhs: 'bg-rose-100 text-rose-800',
-  weibo: 'bg-orange-100 text-orange-800',
-  douyin: 'bg-gray-100 text-gray-800',
-};
-
-function cronLabel(expr: string | null): string {
-  if (!expr) return '—';
-  const parts = expr.split(' ');
-  if (parts.length < 5) return expr;
-  const [min, hour, , , dow] = parts;
-  if (dow === '*') {
-    return `每天 ${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
-  }
-  const days = ['日', '一', '二', '三', '四', '五', '六'];
-  const d = parseInt(dow ?? '0', 10);
-  return `每周${days[d] ?? dow} ${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
-}
 
 export default function SubscriptionsPage() {
   const { data: spiders, isLoading } = useQuery({
@@ -98,7 +78,7 @@ export default function SubscriptionsPage() {
                   <TableCell>
                     {s.platform ? (
                       <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${PLATFORM_BADGE[s.platform] ?? 'bg-gray-100 text-gray-700'}`}
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${platformBadgeClass(s.platform)}`}
                       >
                         {s.platform}
                       </span>

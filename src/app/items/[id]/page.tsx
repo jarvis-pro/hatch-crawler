@@ -6,6 +6,7 @@ import { ChevronDown, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Item } from '@/lib/db';
 import { api } from '@/lib/api-client';
+import { platformBadgeClass, fmtDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,12 +22,6 @@ import {
 import { JsonViewer } from '@/components/items/json-viewer';
 
 // ── 样式映射 ──────────────────────────────────────────────────────────────────
-
-const PLATFORM_BADGE: Record<string, string> = {
-  youtube: 'bg-red-100 text-red-800',
-  bilibili: 'bg-blue-100 text-blue-800',
-  xhs: 'bg-rose-100 text-rose-800',
-};
 
 const KIND_BADGE: Record<string, string> = {
   video: 'bg-purple-100 text-purple-800',
@@ -63,21 +58,6 @@ function fmtDuration(ms: unknown): string {
   const s = total % 60;
   if (h > 0) return `${String(h)}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   return `${String(m)}:${String(s).padStart(2, '0')}`;
-}
-
-function fmtDate(iso: unknown): string {
-  if (!iso) return '—';
-  try {
-    return new Date(String(iso)).toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return String(iso);
-  }
 }
 
 // ── VideoDownloadMenu ─────────────────────────────────────────────────────────
@@ -613,7 +593,7 @@ export default function ItemDetailPage({ params }: { params: Promise<{ id: strin
             <div className="flex shrink-0 items-center gap-1">
               {data.platform && (
                 <span
-                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${PLATFORM_BADGE[data.platform] ?? 'bg-gray-100 text-gray-700'}`}
+                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${platformBadgeClass(data.platform)}`}
                 >
                   {data.platform}
                 </span>
