@@ -222,14 +222,80 @@ END $$`,
   `ALTER TABLE "spiders" ADD COLUMN IF NOT EXISTS "type" varchar(64) NOT NULL DEFAULT ''`,
   // 2. 回填 type = 旧 name（注册表键），仅对 type 仍为空字符串的行执行，幂等
   `UPDATE "spiders" SET "type" = "name" WHERE "type" = ''`,
-  // 3. 回填 name = 旧 display_name（用户标签），仅对 name 仍等于 type（尚未迁移）的行执行，幂等
-  `UPDATE "spiders" SET "name" = "display_name" WHERE "name" = "type" AND "type" != ''`,
+  // 3. 回填 name = 旧 display_name（用户标签）；列已被后续 DROP 时跳过（幂等）
+  `DO $$ BEGIN
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name = 'spiders' AND column_name = 'display_name'
+    ) THEN
+      UPDATE "spiders" SET "name" = "display_name" WHERE "name" = "type" AND "type" != '';
+    END IF;
+  END $$`,
   // 4. name 列扩宽至 128，支持中文长名
   `ALTER TABLE "spiders" ALTER COLUMN "name" TYPE varchar(128)`,
   // 5. runs.spider_name 同步扩宽（存放 spider 显示名，中文可能较长）
   `ALTER TABLE "runs" ALTER COLUMN "spider_name" TYPE varchar(128)`,
-  // 6. display_name 列保留但设默认值，避免新增行报 NOT NULL 错误
-  `ALTER TABLE "spiders" ALTER COLUMN "display_name" SET DEFAULT ''`,
+  // 6. display_name 列设默认值，避免新增行报 NOT NULL 错误；列已 DROP 时跳过（幂等）
+  `DO $$ BEGIN
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name = 'spiders' AND column_name = 'display_name'
+    ) THEN
+      ALTER TABLE "spiders" ALTER COLUMN "display_name" SET DEFAULT '';
+    END IF;
+  END $$`,
+
+  // ── RFC 0003：任务模型重构 ────────────────────────────────────────────────────
+
+  // spiders.task_kind：派生标记（subscription / batch / extract），不入引擎
+  `ALTER TABLE "spiders" ADD COLUMN IF NOT EXISTS "task_kind" varchar(16)`,
+  // 回填规则（幂等：WHERE task_kind IS NULL 防止重复覆盖）
+  `UPDATE "spiders" SET "task_kind" = 'extract'      WHERE "type" = 'url-extractor' AND "task_kind" IS NULL`,
+  `UPDATE "spiders" SET "task_kind" = 'subscription' WHERE "cron_schedule" IS NOT NULL AND "task_kind" IS NULL`,
+  `UPDATE "spiders" SET "task_kind" = 'batch'        WHERE "task_kind" IS NULL`,
+  // 设 NOT NULL（PostgreSQL 幂等，已有约束时为 no-op）
+  `ALTER TABLE "spiders" ALTER COLUMN "task_kind" SET NOT NULL`,
+  // task_kind 索引（按类型快速分页）
+  `CREATE INDEX IF NOT EXISTS "idx_spiders_task_kind" ON "spiders" ("task_kind")`,
+
+  // runs.task_kind：从 spider 同步写入，查询时免 JOIN
+  `ALTER TABLE "runs" ADD COLUMN IF NOT EXISTS "task_kind" varchar(16)`,
+  // 回填历史 runs（按关联 spider 的 task_kind 补填）
+  `UPDATE "runs" r SET "task_kind" = s."task_kind"
+   FROM "spiders" s WHERE r.spider_id = s.id AND r.task_kind IS NULL`,
+
+  // items.trigger_kind：同步自 run.task_kind，用于 /data 来源 chip 过滤
+  `ALTER TABLE "items" ADD COLUMN IF NOT EXISTS "trigger_kind" varchar(16)`,
+  // items.task_id：直接挂 spiders.id，展示来源链接用，不强制 FK
+  `ALTER TABLE "items" ADD COLUMN IF NOT EXISTS "task_id" uuid`,
+  `CREATE INDEX IF NOT EXISTS "idx_items_trigger_kind" ON "items" ("trigger_kind") WHERE "trigger_kind" IS NOT NULL`,
+  // 回填历史 items
+  `UPDATE "items" i SET "trigger_kind" = r."task_kind", "task_id" = r."spider_id"
+   FROM "runs" r WHERE i.run_id = r.id AND i.trigger_kind IS NULL AND r.task_kind IS NOT NULL`,
+
+  // ── RFC 0003 阶段二：历史遗留列清理 ─────────────────────────────────────────
+
+  // drop spiders.spider_type（被 type 列取代）
+  `ALTER TABLE "spiders" DROP COLUMN IF EXISTS "spider_type"`,
+  // drop spiders.display_name（被 name 列取代）
+  `ALTER TABLE "spiders" DROP COLUMN IF EXISTS "display_name"`,
+
+  // ── 阶段二：webhook_deliveries 表（Webhook 投递记录）───────────────────────
+
+  `CREATE TABLE IF NOT EXISTS "webhook_deliveries" (
+    "id" serial PRIMARY KEY,
+    "event_type"    varchar(64)  NOT NULL,
+    "payload"       jsonb        NOT NULL,
+    "url"           text         NOT NULL,
+    "status"        varchar(16)  NOT NULL DEFAULT 'pending',
+    "attempts"      integer      NOT NULL DEFAULT 0,
+    "last_status"   integer,
+    "last_error"    text,
+    "created_at"    timestamp    NOT NULL DEFAULT now(),
+    "delivered_at"  timestamp
+  )`,
+  `CREATE INDEX IF NOT EXISTS "idx_webhook_deliveries_status" ON "webhook_deliveries" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "idx_webhook_deliveries_created_at" ON "webhook_deliveries" ("created_at")`,
 ];
 
 export interface MigrateResult {
