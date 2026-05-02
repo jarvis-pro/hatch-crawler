@@ -8,6 +8,7 @@ import { api } from '@/lib/api-client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import {
   Table,
@@ -162,6 +163,7 @@ export default function ItemsPage() {
   const [page, setPage] = useState(1);
   const [exporting, setExporting] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -230,8 +232,7 @@ export default function ItemsPage() {
 
   function handleDeleteSelected() {
     if (selected.size === 0) return;
-    if (!confirm(`确定删除选中的 ${selected.size} 条条目？此操作不可撤销。`)) return;
-    deleteMutation.mutate([...selected]);
+    setShowDeleteConfirm(true);
   }
 
   // ── 导出：拉取当前筛选条件下全部数据 / 仅选中行 ──────────────────────────
@@ -270,228 +271,243 @@ export default function ItemsPage() {
   const knownKinds = Object.keys(KIND_LABELS);
 
   return (
-    <div className="space-y-4">
-      {/* ── 筛选栏 ── */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          placeholder="搜索 URL 或 title..."
-          value={q}
-          onChange={(e) => setFilter(() => setQ(e.target.value))}
-          className="max-w-xs"
-        />
+    <>
+      <div className="space-y-4">
+        {/* ── 筛选栏 ── */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            placeholder="搜索 URL 或 title..."
+            value={q}
+            onChange={(e) => setFilter(() => setQ(e.target.value))}
+            className="max-w-xs"
+          />
 
-        <select
-          value={platform}
-          onChange={(e) => setFilter(() => setPlatform(e.target.value))}
-          className="rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-        >
-          <option value="">所有平台</option>
-          {knownPlatforms.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </select>
+          <select
+            value={platform}
+            onChange={(e) => setFilter(() => setPlatform(e.target.value))}
+            className="rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            <option value="">所有平台</option>
+            {knownPlatforms.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
 
-        <select
-          value={kind}
-          onChange={(e) => setFilter(() => setKind(e.target.value))}
-          className="rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-        >
-          <option value="">所有类型</option>
-          {knownKinds.map((k) => (
-            <option key={k} value={k}>
-              {KIND_LABELS[k] ?? k}
-            </option>
-          ))}
-        </select>
+          <select
+            value={kind}
+            onChange={(e) => setFilter(() => setKind(e.target.value))}
+            className="rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            <option value="">所有类型</option>
+            {knownKinds.map((k) => (
+              <option key={k} value={k}>
+                {KIND_LABELS[k] ?? k}
+              </option>
+            ))}
+          </select>
 
-        <span className="flex-1 text-sm text-muted-foreground">共 {data?.total ?? 0} 条</span>
+          <span className="flex-1 text-sm text-muted-foreground">共 {data?.total ?? 0} 条</span>
 
-        {/* 批量操作（有选中时显示） */}
-        {selected.size > 0 && (
-          <>
-            <span className="text-sm font-medium text-muted-foreground">
-              已选 {selected.size} 条
+          {/* 批量操作（有选中时显示） */}
+          {selected.size > 0 && (
+            <>
+              <span className="text-sm font-medium text-muted-foreground">
+                已选 {selected.size} 条
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={exporting}
+                onClick={() => {
+                  void handleExport('xls', true);
+                }}
+              >
+                导出选中 Excel
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={deleteMutation.isPending}
+                onClick={handleDeleteSelected}
+              >
+                {deleteMutation.isPending ? '删除中…' : `删除 ${selected.size} 条`}
+              </Button>
+            </>
+          )}
+
+          {/* 全量导出按钮 */}
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={exporting || !data?.total}
+            onClick={() => {
+              void handleExport('xls');
+            }}
+          >
+            {exporting ? '导出中…' : '导出 Excel'}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={exporting || !data?.total}
+            onClick={() => {
+              void handleExport('csv');
+            }}
+          >
+            导出 CSV
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={exporting || !data?.total}
+            onClick={() => {
+              void handleExport('json');
+            }}
+          >
+            导出 JSON
+          </Button>
+        </div>
+
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10">
+                    {/* 全选复选框 */}
+                    <input
+                      type="checkbox"
+                      checked={allOnPageSelected}
+                      onChange={toggleSelectAll}
+                      className="h-4 w-4 cursor-pointer rounded border-gray-300"
+                      aria-label="全选当前页"
+                    />
+                  </TableHead>
+                  <TableHead>#</TableHead>
+                  <TableHead>平台 / Spider</TableHead>
+                  <TableHead>类型</TableHead>
+                  <TableHead>Title / URL</TableHead>
+                  <TableHead>抓取时间</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-muted-foreground">
+                      加载中…
+                    </TableCell>
+                  </TableRow>
+                )}
+                {data?.data.length === 0 && !isLoading && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-muted-foreground">
+                      还没有抓取到任何条目。
+                    </TableCell>
+                  </TableRow>
+                )}
+                {data?.data.map((it) => {
+                  const title = (it.payload as { title?: string } | null)?.title ?? null;
+                  const kindLabel = it.kind ? (KIND_LABELS[it.kind] ?? it.kind) : null;
+                  const kindColor = it.kind ? (KIND_COLORS[it.kind] ?? '') : '';
+                  const isChecked = selected.has(it.id);
+                  return (
+                    <TableRow key={it.id} className={isChecked ? 'bg-muted/40' : undefined}>
+                      <TableCell>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleOne(it.id)}
+                          className="h-4 w-4 cursor-pointer rounded border-gray-300"
+                          aria-label={`选择条目 ${it.id}`}
+                        />
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">{it.id}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-0.5">
+                          {it.platform && (
+                            <span className="text-xs font-medium text-muted-foreground">
+                              {it.platform}
+                            </span>
+                          )}
+                          <span className="text-xs text-muted-foreground">{it.spider}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {kindLabel ? (
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${kindColor}`}
+                          >
+                            {kindLabel}
+                          </span>
+                        ) : (
+                          <Badge variant="outline">{it.type}</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="max-w-sm">
+                        <Link
+                          href={`/items/${String(it.id)}`}
+                          className="line-clamp-1 hover:underline"
+                        >
+                          {title ?? it.url}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {new Date(it.fetchedAt).toLocaleString()}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        {/* ── 翻页控件 ── */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={page <= 1}
+              onClick={() => {
+                setPage((p) => p - 1);
+                setSelected(new Set());
+              }}
+            >
+              ‹ 上一页
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              第 {page} / {totalPages} 页
             </span>
             <Button
               size="sm"
               variant="outline"
-              disabled={exporting}
+              disabled={page >= totalPages}
               onClick={() => {
-                void handleExport('xls', true);
+                setPage((p) => p + 1);
+                setSelected(new Set());
               }}
             >
-              导出选中 Excel
+              下一页 ›
             </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              disabled={deleteMutation.isPending}
-              onClick={handleDeleteSelected}
-            >
-              {deleteMutation.isPending ? '删除中…' : `删除 ${selected.size} 条`}
-            </Button>
-          </>
+          </div>
         )}
-
-        {/* 全量导出按钮 */}
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={exporting || !data?.total}
-          onClick={() => {
-            void handleExport('xls');
-          }}
-        >
-          {exporting ? '导出中…' : '导出 Excel'}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={exporting || !data?.total}
-          onClick={() => {
-            void handleExport('csv');
-          }}
-        >
-          导出 CSV
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={exporting || !data?.total}
-          onClick={() => {
-            void handleExport('json');
-          }}
-        >
-          导出 JSON
-        </Button>
       </div>
-
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10">
-                  {/* 全选复选框 */}
-                  <input
-                    type="checkbox"
-                    checked={allOnPageSelected}
-                    onChange={toggleSelectAll}
-                    className="h-4 w-4 cursor-pointer rounded border-gray-300"
-                    aria-label="全选当前页"
-                  />
-                </TableHead>
-                <TableHead>#</TableHead>
-                <TableHead>平台 / Spider</TableHead>
-                <TableHead>类型</TableHead>
-                <TableHead>Title / URL</TableHead>
-                <TableHead>抓取时间</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading && (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
-                    加载中…
-                  </TableCell>
-                </TableRow>
-              )}
-              {data?.data.length === 0 && !isLoading && (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
-                    还没有抓取到任何条目。
-                  </TableCell>
-                </TableRow>
-              )}
-              {data?.data.map((it) => {
-                const title = (it.payload as { title?: string } | null)?.title ?? null;
-                const kindLabel = it.kind ? (KIND_LABELS[it.kind] ?? it.kind) : null;
-                const kindColor = it.kind ? (KIND_COLORS[it.kind] ?? '') : '';
-                const isChecked = selected.has(it.id);
-                return (
-                  <TableRow key={it.id} className={isChecked ? 'bg-muted/40' : undefined}>
-                    <TableCell>
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => toggleOne(it.id)}
-                        className="h-4 w-4 cursor-pointer rounded border-gray-300"
-                        aria-label={`选择条目 ${it.id}`}
-                      />
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">{it.id}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-0.5">
-                        {it.platform && (
-                          <span className="text-xs font-medium text-muted-foreground">
-                            {it.platform}
-                          </span>
-                        )}
-                        <span className="text-xs text-muted-foreground">{it.spider}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {kindLabel ? (
-                        <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${kindColor}`}
-                        >
-                          {kindLabel}
-                        </span>
-                      ) : (
-                        <Badge variant="outline">{it.type}</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="max-w-sm">
-                      <Link
-                        href={`/items/${String(it.id)}`}
-                        className="line-clamp-1 hover:underline"
-                      >
-                        {title ?? it.url}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {new Date(it.fetchedAt).toLocaleString()}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      {/* ── 翻页控件 ── */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={page <= 1}
-            onClick={() => {
-              setPage((p) => p - 1);
-              setSelected(new Set());
-            }}
-          >
-            ‹ 上一页
-          </Button>
-          <span className="text-sm text-muted-foreground">
-            第 {page} / {totalPages} 页
-          </span>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={page >= totalPages}
-            onClick={() => {
-              setPage((p) => p + 1);
-              setSelected(new Set());
-            }}
-          >
-            下一页 ›
-          </Button>
-        </div>
-      )}
-    </div>
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title="删除条目"
+        description={`确定删除选中的 ${selected.size} 条条目？此操作不可撤销。`}
+        confirmText="确认删除"
+        danger
+        isPending={deleteMutation.isPending}
+        onConfirm={() => {
+          deleteMutation.mutate([...selected]);
+          setShowDeleteConfirm(false);
+        }}
+        onClose={() => setShowDeleteConfirm(false)}
+      />
+    </>
   );
 }

@@ -6,6 +6,7 @@ import { api } from '@/lib/api-client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -114,6 +115,7 @@ function HealthBadge({ ok, testedAt }: { ok: boolean | null; testedAt: string | 
 function AccountsTab() {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<AccountRow | null>(null);
 
   const { data: accounts = [], isLoading } = useQuery({
     queryKey: ['accounts'],
@@ -151,122 +153,145 @@ function AccountsTab() {
   });
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          平台凭据（API Key / Cookie）加密存储，用于 Spider 抓取时注入鉴权。
-        </p>
-        <Button size="sm" onClick={() => setShowForm((v) => !v)}>
-          {showForm ? '取消' : '+ 新增凭据'}
-        </Button>
-      </div>
+    <>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            平台凭据（API Key / Cookie）加密存储，用于 Spider 抓取时注入鉴权。
+          </p>
+          <Button size="sm" onClick={() => setShowForm((v) => !v)}>
+            {showForm ? '取消' : '+ 新增凭据'}
+          </Button>
+        </div>
 
-      {showForm && (
-        <AddAccountForm
-          onSuccess={() => {
-            setShowForm(false);
-            void qc.invalidateQueries({ queryKey: ['accounts'] });
-          }}
-        />
-      )}
+        {showForm && (
+          <AddAccountForm
+            onSuccess={() => {
+              setShowForm(false);
+              void qc.invalidateQueries({ queryKey: ['accounts'] });
+            }}
+          />
+        )}
 
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>平台</TableHead>
-                <TableHead>标签</TableHead>
-                <TableHead>类型</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>健康</TableHead>
-                <TableHead>今日配额</TableHead>
-                <TableHead>失败次数</TableHead>
-                <TableHead>最近使用</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading && (
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground">
-                    加载中…
-                  </TableCell>
+                  <TableHead>平台</TableHead>
+                  <TableHead>标签</TableHead>
+                  <TableHead>类型</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>健康</TableHead>
+                  <TableHead>今日配额</TableHead>
+                  <TableHead>失败次数</TableHead>
+                  <TableHead>最近使用</TableHead>
+                  <TableHead></TableHead>
                 </TableRow>
-              )}
-              {accounts.length === 0 && !isLoading && (
-                <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground">
-                    暂无凭据，点击"新增凭据"添加。
-                  </TableCell>
-                </TableRow>
-              )}
-              {accounts.map((acc) => (
-                <TableRow key={acc.id}>
-                  <TableCell className="font-mono text-xs">{acc.platform}</TableCell>
-                  <TableCell>{acc.label}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{acc.kind}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[acc.status] ?? ''}`}
-                    >
-                      {acc.status}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <HealthBadge ok={acc.lastTestOk} testedAt={acc.lastTestedAt} />
-                  </TableCell>
-                  <TableCell className="text-xs tabular-nums">
-                    {acc.kind === 'apikey' ? acc.quotaUsedToday.toLocaleString() : '—'}
-                  </TableCell>
-                  <TableCell className="text-xs">{acc.failureCount}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {acc.lastUsedAt ? new Date(acc.lastUsedAt).toLocaleString() : '—'}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      {acc.status === 'banned' && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={unban.isPending}
-                          onClick={() => unban.mutate(acc.id)}
-                          className="text-green-700 hover:text-green-800"
-                        >
-                          恢复
-                        </Button>
-                      )}
-                      {acc.kind === 'apikey' && acc.status !== 'banned' && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={testAccount.isPending}
-                          onClick={() => testAccount.mutate(acc.id)}
-                        >
-                          测试
-                        </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={remove.isPending}
-                        onClick={() => {
-                          if (confirm(`确认删除凭据"${acc.label}"？`)) remove.mutate(acc.id);
-                        }}
+              </TableHeader>
+              <TableBody>
+                {isLoading && (
+                  <TableRow>
+                    <TableCell colSpan={9} className="text-center text-muted-foreground">
+                      加载中…
+                    </TableCell>
+                  </TableRow>
+                )}
+                {accounts.length === 0 && !isLoading && (
+                  <TableRow>
+                    <TableCell colSpan={9} className="text-center text-muted-foreground">
+                      暂无凭据，点击"新增凭据"添加。
+                    </TableCell>
+                  </TableRow>
+                )}
+                {accounts.map((acc) => (
+                  <TableRow key={acc.id}>
+                    <TableCell className="font-mono text-xs">{acc.platform}</TableCell>
+                    <TableCell>{acc.label}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{acc.kind}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[acc.status] ?? ''}`}
                       >
-                        删除
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-    </div>
+                        {acc.status}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <HealthBadge ok={acc.lastTestOk} testedAt={acc.lastTestedAt} />
+                    </TableCell>
+                    <TableCell className="text-xs tabular-nums">
+                      {acc.kind === 'apikey' ? acc.quotaUsedToday.toLocaleString() : '—'}
+                    </TableCell>
+                    <TableCell className="text-xs">{acc.failureCount}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {acc.lastUsedAt ? new Date(acc.lastUsedAt).toLocaleString() : '—'}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        {acc.status === 'banned' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={unban.isPending}
+                            onClick={() => unban.mutate(acc.id)}
+                            className="text-green-700 hover:text-green-800"
+                          >
+                            恢复
+                          </Button>
+                        )}
+                        {acc.kind === 'apikey' && acc.status !== 'banned' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={testAccount.isPending}
+                            onClick={() => testAccount.mutate(acc.id)}
+                          >
+                            测试
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={remove.isPending}
+                          onClick={() => setDeleteTarget(acc)}
+                        >
+                          删除
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </div>
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="删除凭据"
+        description={
+          deleteTarget ? (
+            <>
+              确认删除凭据「
+              <span className="font-medium text-foreground">{deleteTarget.label}</span>
+              」？此操作不可撤销。
+            </>
+          ) : (
+            ''
+          )
+        }
+        confirmText="确认删除"
+        danger
+        isPending={remove.isPending}
+        onConfirm={() => {
+          if (deleteTarget) remove.mutate(deleteTarget.id);
+          setDeleteTarget(null);
+        }}
+        onClose={() => setDeleteTarget(null)}
+      />
+    </>
   );
 }
 
