@@ -2,6 +2,17 @@
  * 前端 API 客户端：统一处理 { ok, data } / { ok: false, error } 响应。
  */
 
+/**
+ * 分页列表响应的通用结构。
+ * 所有 GET /api/<resource> 返回分页数据时都使用此形状。
+ */
+export interface ListResult<T> {
+  data: T[];
+  total: number;
+  page?: number;
+  pageSize?: number;
+}
+
 interface ApiSuccess<T> {
   ok: true;
   data: T;
