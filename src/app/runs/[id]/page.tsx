@@ -37,24 +37,10 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
     },
   });
 
-  // RFC 0002 Phase D：手动一键派发本次 run 的全部附件下载
-  const downloadAll = useMutation({
-    mutationFn: () =>
-      api.post<{ items: number; queued: number; skipped: number; errors: number }>(
-        `/api/runs/${id}/download-all`,
-      ),
-    onSuccess: ({ items, queued, skipped, errors }) => {
-      toast.success(
-        `扫描 ${items} 个 item：入队 ${queued}，跳过 ${skipped}${errors ? `，失败 ${errors}` : ''}`,
-      );
-    },
-    onError: (err) => {
-      const msg = err instanceof ApiClientError ? err.message : String(err);
-      toast.error(msg);
-    },
-  });
-
   if (!run) return <div>加载中…</div>;
+
+  // 构建"查看结果"跳转路径：优先按任务类型跳到对应专属页
+  const viewResultsHref = `/data?runId=${run.id}`;
 
   return (
     <div className="space-y-6">
@@ -75,20 +61,9 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
             </Button>
           )}
           {(run.status === 'completed' || run.status === 'failed' || run.status === 'stopped') && (
-            <>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={downloadAll.isPending}
-                onClick={() => downloadAll.mutate()}
-                title="把这次 run 抓到的所有可下载 item 一次性派发到下载队列"
-              >
-                {downloadAll.isPending ? '派发中…' : '一键下载附件'}
-              </Button>
-              <Button asChild size="sm" variant="outline">
-                <Link href={`/items?runId=${run.id}`}>查看抓取结果 →</Link>
-              </Button>
-            </>
+            <Button asChild size="sm" variant="outline">
+              <Link href={viewResultsHref}>查看抓取结果 →</Link>
+            </Button>
           )}
         </div>
       </div>
