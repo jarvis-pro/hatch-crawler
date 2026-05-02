@@ -1,11 +1,20 @@
 import 'server-only';
-import { type Db, eventRepo, runRepo, accountRepo, settingRepo, spiderRepo } from '@/lib/db';
+import {
+  type Db,
+  eventRepo,
+  runRepo,
+  accountRepo,
+  settingRepo,
+  SETTINGS_KEYS,
+  spiderRepo,
+} from '@/lib/db';
 import { runSpider, setCrawlerConfig } from '@/lib/crawler';
 import type { CrawlerEvent, EventLevel } from '@/lib/shared';
 import type { CrawlJobData } from '@/lib/db';
 import { getSpiderEntry, listSpiderNames } from '../spider-registry';
 import { PostgresStorage } from './postgres-storage';
 import { publish } from './event-bus';
+import { notifyWebhook } from './webhook';
 import { env } from '@/lib/env';
 
 /**
@@ -88,7 +97,7 @@ export async function handleCrawlJob(
   }
 
   // 注入代理列表（从 settings 表的 proxy_pool key 读取）
-  const proxyList = await settingRepo.get<string[]>(db, 'proxy_pool').catch(() => null);
+  const proxyList = await settingRepo.get<string[]>(db, SETTINGS_KEYS.proxyPool).catch(() => null);
   if (Array.isArray(proxyList) && proxyList.length > 0) {
     spiderParams.proxyUrls = proxyList;
   }
@@ -126,7 +135,8 @@ export async function handleCrawlJob(
 
   // 读取连续失败告警阈值（默认 3）
   const maxConsecutiveFailures = Number(
-    (await settingRepo.get<number>(db, 'max_consecutive_failures').catch(() => null)) ?? 3,
+    (await settingRepo.get<number>(db, SETTINGS_KEYS.maxConsecutiveFailures).catch(() => null)) ??
+      3,
   );
 
   try {
@@ -183,101 +193,6 @@ export async function handleCrawlJob(
 
     throw err;
   }
-}
-
-/**
- * 向配置的 Webhook URL 发送运行结果通知。
- * - 支持 HMAC-SHA256 签名（settings.webhook_secret 存在时启用）
- * - 最多重试 3 次，指数退避（1s / 2s / 4s）
- * - 每次投递结果写入 webhook_deliveries 表
- * - 失败时静默忽略，不影响主流程
- */
-async function notifyWebhook(
-  db: Db,
-  runId: string,
-  spider: string,
-  status: string,
-  errorMessage?: string,
-): Promise<void> {
-  const webhookUrl = await settingRepo.get<string>(db, 'webhook_url').catch(() => null);
-  if (!webhookUrl || typeof webhookUrl !== 'string') return;
-
-  const webhookSecret = await settingRepo.get<string>(db, 'webhook_secret').catch(() => null);
-
-  const payload = {
-    event: 'run_finished',
-    runId,
-    spider,
-    status,
-    ...(errorMessage ? { errorMessage } : {}),
-    at: new Date().toISOString(),
-  };
-  const body = JSON.stringify(payload);
-
-  // HMAC-SHA256 签名（可选）
-  const getSignature = async (): Promise<string | null> => {
-    if (!webhookSecret || typeof webhookSecret !== 'string') return null;
-    const { createHmac } = await import('crypto');
-    return 'sha256=' + createHmac('sha256', webhookSecret).update(body).digest('hex');
-  };
-
-  const signature = await getSignature();
-  const headers: Record<string, string> = { 'content-type': 'application/json' };
-  if (signature) headers['x-webhook-signature'] = signature;
-
-  // 最多 3 次尝试，指数退避
-  const MAX_RETRIES = 3;
-  let lastStatus: number | null = null;
-  let lastError: string | null = null;
-
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const res = await fetch(webhookUrl, {
-        method: 'POST',
-        headers,
-        body,
-        signal: AbortSignal.timeout(10_000),
-      });
-      lastStatus = res.status;
-
-      if (res.ok) {
-        // 投递成功
-        await db.$executeRawUnsafe(
-          `INSERT INTO "webhook_deliveries" ("event_type","payload","url","status","attempts","last_status","delivered_at")
-           VALUES ($1,$2::jsonb,$3,'delivered',$4,$5,now())`,
-          'run_finished',
-          body,
-          webhookUrl,
-          attempt,
-          lastStatus,
-        );
-        return;
-      }
-
-      lastError = `HTTP ${String(res.status)}`;
-    } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
-    }
-
-    // 指数退避（最后一次不 sleep）
-    if (attempt < MAX_RETRIES) {
-      await new Promise((r) => setTimeout(r, 1000 * 2 ** (attempt - 1)));
-    }
-  }
-
-  // 全部重试耗尽，记录失败
-  await db
-    .$executeRawUnsafe(
-      `INSERT INTO "webhook_deliveries" ("event_type","payload","url","status","attempts","last_status","last_error")
-       VALUES ($1,$2::jsonb,$3,'failed',$4,$5,$6)`,
-      'run_finished',
-      body,
-      webhookUrl,
-      MAX_RETRIES,
-      lastStatus,
-      lastError,
-    )
-    .catch(() => {}); // 写失败不影响主流程
 }
 
 function extractMessage(event: CrawlerEvent): string {

@@ -1,5 +1,14 @@
 import 'server-only';
-import { getBoss, getDb, QUEUE_CRAWL, runRepo, spiderRepo, settingRepo, RunStatus } from '@/lib/db';
+import {
+  getBoss,
+  getDb,
+  QUEUE_CRAWL,
+  runRepo,
+  spiderRepo,
+  settingRepo,
+  SETTINGS_KEYS,
+  RunStatus,
+} from '@/lib/db';
 import type { CrawlJobData } from '@/lib/db';
 import { env } from '../env';
 import { handleCrawlJob } from './job-handler';
@@ -107,7 +116,7 @@ export async function startWorker(): Promise<void> {
 
   // 1) 清理 stale runs（超时时长从 settings 读，默认 30 分钟）
   const staleMin = Number(
-    (await settingRepo.get<number>(db, 'stale_run_timeout_min').catch(() => null)) ?? 30,
+    (await settingRepo.get<number>(db, SETTINGS_KEYS.staleRunTimeoutMin).catch(() => null)) ?? 30,
   );
   const cleaned = await runRepo.cleanupStale(db, staleMin);
   if (cleaned > 0) {
@@ -145,7 +154,8 @@ export async function startWorker(): Promise<void> {
   await boss.schedule(QUEUE_EVENTS_CLEANUP, '0 2 * * *', {});
   await boss.work(QUEUE_EVENTS_CLEANUP, async () => {
     const retentionDays = Number(
-      (await settingRepo.get<number>(db, 'events_retention_days').catch(() => null)) ?? 30,
+      (await settingRepo.get<number>(db, SETTINGS_KEYS.eventsRetentionDays).catch(() => null)) ??
+        30,
     );
     const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
     const result = (await db.$executeRawUnsafe(
