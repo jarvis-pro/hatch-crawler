@@ -334,6 +334,21 @@ END $$`,
   //    items.run_id 由 ON DELETE SET NULL 保留）。幂等：已无对应行时 0 删除。
   `DELETE FROM "spiders" WHERE "type" = 'url-extractor'`,
 
+  // ── RFC 0002 撤回清理：删除 attachments 子系统遗留表 / 枚举 / 列 ────────────────
+  // 早期版本（commit 6d699de）建过 attachments 表 + 相关枚举 + 关联列，
+  // 撤回提交（c143e2b）只删了"建"的代码，没有写"拆"的迁移，导致旧库现在还有这些
+  // 残留。它们会让下面的 items.id → uuid 改造失败（attachments_item_id_fkey
+  // 阻止 items_pkey 重建）。这里把所有残留以幂等 DROP 一次清干净。
+  // CASCADE：连同 attachments_item_id_fkey、uniq_attachments_spider_sha256
+  // 等附属对象一起删；attachments 自身已下线，无外部引用风险。
+  `DROP TABLE IF EXISTS "attachments" CASCADE`,
+  `DROP TYPE IF EXISTS "attachment_kind"`,
+  `DROP TYPE IF EXISTS "attachment_status"`,
+  `ALTER TABLE "spiders" DROP COLUMN IF EXISTS "auto_download"`,
+  `ALTER TABLE "runs" DROP COLUMN IF EXISTS "attachments_queued"`,
+  `ALTER TABLE "runs" DROP COLUMN IF EXISTS "attachments_completed"`,
+  `ALTER TABLE "runs" DROP COLUMN IF EXISTS "attachments_failed"`,
+
   // ── items.id 从 serial 改为 uuid ─────────────────────────────────────────
   // 动机：避免自增数对外暴露内容总量。items.id 当前没有任何外键引用，
   //   切换是安全的；老的 serial 值不保留（外部如果靠这个数 id 引用，会失效）。
